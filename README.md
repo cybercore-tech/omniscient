@@ -1,32 +1,46 @@
 # omniscient
 
-A full-system audit tool for the CYBERDECK suite. A Rust rewrite of an
-original fish shell function of the same name — same look, same output
-locations, but with the rough edges fixed.
+A full-system audit tool for the CYBERDECK suite.
 
-## Build
+## Origin
 
-    cargo build --release
+`omniscient` started life as a fish shell function — an ASCII cyberdeck
+header, a color-cycling "SCANNING..." HUD animation, an `fzf`-driven
+module picker, and nine audit modules covering hardware, storage, btrfs
+snapshots, network, containers, services, kernel logs, bluetooth, and
+connected devices. It worked, and it looked good doing it.
 
-The `Cargo.toml` pins several dependencies (`dialoguer`, `chrono`,
-`anyhow`, and a few transitive crates: `zeroize`, `getrandom`,
-`fastrand`, `rustix`) to older versions. That pinning was only needed
-to get this building on an old apt-provided Rust toolchain (1.75) in a
-throwaway sandbox — on a real machine with a current Rust via
-`rustup`/`mise`, try loosening or removing those pins first
-(`cargo update`), and only re-pin anything that actually breaks.
+This is the Rust rewrite: same look, same output locations, same
+modules — but with real fixes for the rough edges the fish version
+had accumulated. See [What changed](#what-changed-from-the-fish-version)
+below.
+
+## Install
+
+    git clone https://github.com/darkstardevx/omniscient.git
+    cd omniscient
+    ./install.sh
+
+Builds the release binary and drops it in `~/.local/bin/omniscient`.
+On Omarchy, `~/.local/bin` is already on your `$PATH` — nothing else to
+do. `install.sh` checks and tells you if it isn't.
 
 ## Use
 
-    ./target/release/omniscient
+    omniscient
 
-Same flow as the original: header, a capability matrix showing which
-tools this run can actually use, a multi-select picker (module names,
-or "Full System Audit" for everything), then a single `sudo -v` prompt
-up front before anything runs — not scattered mid-scan like the fish
-version.
+Header, a capability matrix showing which tools this run can actually
+use, a multi-select picker (module names, or "Full System Audit" for
+everything), then a single `sudo -v` prompt up front before anything
+runs.
 
-Reports land in `~/.arch-sys/system/omniscient/`, same as before:
+Skip the header/matrix/health-score banner and jump straight to the
+picker:
+
+    omniscient --quiet
+
+Reports land in `~/.arch-sys/system/omniscient/`, same paths as the
+original fish version:
 
     <slug>-<timestamp>/<slug>.md          — single module
     full_system_audit-<timestamp>/        — every module, plus SUMMARY.md
@@ -61,3 +75,15 @@ Reports land in `~/.arch-sys/system/omniscient/`, same as before:
     src/hud.rs         — the scanning animation
     src/palette.rs     — CYBERGRID true-color helpers
     src/pathcheck.rs   — PATH lookup (replaces the `which` crate)
+
+## Requirements
+
+Rust (stable). `sudo` for the hardware/storage/snapshot modules.
+Everything else the audit runs is optional — the capability matrix at
+startup shows you exactly what's available on the machine you're
+running it on, and missing tools just get a noted skip in the report
+rather than an error.
+
+## License
+
+MIT
