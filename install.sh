@@ -2,16 +2,9 @@
 set -euo pipefail
 
 echo "Building omniscient (release)..."
-cargo build --release
-
-if [[ -n "${CARGO_TARGET_DIR:-}" ]]; then
-    BIN_SRC="${CARGO_TARGET_DIR}/release/omniscient"
-elif [[ -f "$HOME/.cargo/config.toml" ]] && grep -q "target-dir" "$HOME/.cargo/config.toml"; then
-    TARGET_DIR=$(grep "target-dir" "$HOME/.cargo/config.toml" | sed -E 's/.*=\s*"(.*)"/\1/')
-    BIN_SRC="${TARGET_DIR}/release/omniscient"
-else
-    BIN_SRC="target/release/omniscient"
-fi
+TARGET_DIR="${CARGO_TARGET_DIR:-$HOME/.cargo-target}"
+CARGO_TARGET_DIR="$TARGET_DIR" cargo build --release --locked
+BIN_SRC="${TARGET_DIR}/release/omniscient"
 
 if [[ ! -f "$BIN_SRC" ]]; then
     echo "Could not find built binary at: $BIN_SRC"

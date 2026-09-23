@@ -21,7 +21,8 @@ below.
     cd omniscient
     ./install.sh
 
-Builds the release binary and drops it in `~/.local/bin/omniscient`.
+Builds the release binary in `~/.cargo-target/release/` by default and drops
+the current executable in `~/.local/bin/omniscient`.
 On Omarchy, `~/.local/bin` is already on your `$PATH` — nothing else to
 do. `install.sh` checks and tells you if it isn't.
 
