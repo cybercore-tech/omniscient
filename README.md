@@ -1,4 +1,4 @@
-# ⚡ OMNISCIENT // CYBERCORE SYSTEM AUDIT
+# ⟦◈⟧ OMNISCIENT // CYBERCORE SYSTEM AUDIT
 
 `omniscient` is the full-system audit console for the Cybercore family: a
 Rust-powered, full-screen Ratatui dashboard that turns system inspection into
@@ -9,7 +9,7 @@ and an `fzf` module picker. The Rust release keeps that spirit while adding a
 structured module registry, live progress, health scoring, capability
 detection, privilege handling, and linked Markdown reports.
 
-## 🧰 INSTALLATION // BUILD + DEPLOY
+## ⟦◆⟧ INSTALLATION // BUILD + DEPLOY
 
 ### Requirements
 
@@ -42,7 +42,7 @@ To choose another Cargo build directory:
 CARGO_TARGET_DIR="$HOME/.cache/omniscient-target" ./install.sh
 ```
 
-## 🛰️ USAGE // RUN A SCAN
+## ⟦◇⟧ USAGE // RUN A SCAN
 
 Start the dashboard from a real terminal:
 
@@ -54,7 +54,7 @@ The application is intentionally interactive. It requires a TTY so it can
 enter the full-screen dashboard and restore your terminal cleanly when it
 exits.
 
-### 🎛️ Keyboard controls
+### ⟦⌘⟧ Keyboard controls
 
 | Key | Action |
 | --- | --- |
@@ -74,7 +74,7 @@ Typical workflow:
 4. Authorize elevated modules if prompted.
 5. Follow the live scan output and open the final `SUMMARY.md` path.
 
-## 🛡️ AUTH // PRIVILEGE MODES
+## ⟦⌬⟧ AUTH // PRIVILEGE MODES
 
 The repository is distro-neutral. Terminal `sudo` is the default for every
 user and every distribution:
@@ -103,23 +103,23 @@ OMNISCIENT_AUTH=sudo omniscient
 Any unsupported `OMNISCIENT_AUTH` value falls back to `sudo`. The project
 does not impose an Omarchy or desktop-specific default on other users.
 
-## 🧩 MODULE GRID // WHAT GETS INSPECTED
+## ⟦▣⟧ MODULE GRID // WHAT GETS INSPECTED
 
-- 🖥️ **Hardware Core** — CPU, hardware inventory, USB, and PCI data
-- 💾 **Storage Matrix** — block devices and SMART health information
-- 📸 **Btrfs Snapshots** — mounted Btrfs filesystems and subvolumes
-- 🌐 **Network Nexus** — interfaces and listening sockets
-- 📦 **Container Realm** — Docker, Flatpak, and Snap inventory
-- ⚙️ **Services & Daemons** — running and failed systemd services
-- 📜 **Kernel Logs** — recent journal entries and kernel messages
-- 📡 **Bluetooth Deep** — visible Bluetooth devices
-- 🔌 **Connected Devices** — displays and audio devices
+- ⟦HW⟧ **Hardware Core** — CPU, hardware inventory, USB, and PCI data
+- ⟦ST⟧ **Storage Matrix** — block devices and SMART health information
+- ⟦BT⟧ **Btrfs Snapshots** — mounted Btrfs filesystems and subvolumes
+- ⟦NW⟧ **Network Nexus** — interfaces and listening sockets
+- ⟦CT⟧ **Container Realm** — Docker, Flatpak, and Snap inventory
+- ⟦SV⟧ **Services & Daemons** — running and failed systemd services
+- ⟦KL⟧ **Kernel Logs** — recent journal entries and kernel messages
+- ⟦BD⟧ **Bluetooth Deep** — visible Bluetooth devices
+- ⟦IO⟧ **Connected Devices** — displays and audio devices
 
 The capability matrix marks tools as available, missing, optional, or
 privileged before a scan starts. Missing optional tools are recorded as
 skipped instead of being treated as a system failure.
 
-## 🧬 HEALTH // SIGNAL, NOT JUST INVENTORY
+## ⟦✦⟧ HEALTH // SIGNAL, NOT JUST INVENTORY
 
 The health score starts at `100` and is adjusted using real signals:
 
@@ -130,7 +130,7 @@ The health score starts at `100` and is adjusted using real signals:
 The score is a diagnostic signal, not a security certification or a warranty
 that every system component is healthy.
 
-## 📊 REPORTS // WHERE OUTPUT GOES
+## ⟦▤⟧ REPORTS // WHERE OUTPUT GOES
 
 Reports are written beneath:
 
@@ -152,7 +152,7 @@ For a selected-module scan, reports are written directly beneath the same
 Omniscient report root and the generated `SUMMARY.md` links to each result.
 Command failures and unavailable tools remain visible in the Markdown output.
 
-## 🧱 PROJECT MAP // DEVELOPMENT
+## ⟦⬡⟧ PROJECT MAP // DEVELOPMENT
 
 ```text
 src/lib.rs         module declarations
@@ -179,12 +179,12 @@ bash -n install.sh
 git diff --check
 ```
 
-## 🚀 RELEASE STATUS
+## ⟦⟐⟧ RELEASE STATUS
 
 This is a Cybercore `0.1.x` release line: suitable for real local audits and
 continued testing across Linux distributions. The tool reports what it can
 observe and never silently treats unavailable commands as successful checks.
 
-## 📜 LICENSE
+## ⟦©⟧ LICENSE
 
 Released under the [MIT License](LICENSE).

@@ -621,7 +621,7 @@ fn draw_header(frame: &mut Frame, area: Rect, app: &App, palette: UiPalette) {
     let lines = vec![
         Line::from(vec![
             Span::styled(
-                format!("{} ", glyph(palette, "◈", "*")),
+                format!("{} ", glyph(palette, "⟦◈⟧", "[*]")),
                 Style::default().fg(palette.pink),
             ),
             Span::styled(
