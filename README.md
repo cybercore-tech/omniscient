@@ -1,5 +1,7 @@
 # ⟦◈⟧ OMNISCIENT // CYBERCORE SYSTEM AUDIT
 
+[![CI](https://github.com/darkstardevx/omniscient/actions/workflows/ci.yml/badge.svg)](https://github.com/darkstardevx/omniscient/actions/workflows/ci.yml)
+
 `omniscient` is the full-system audit console for the Cybercore family: a
 Rust-powered, full-screen Ratatui dashboard that turns system inspection into
 a readable, repeatable report.
@@ -164,20 +166,43 @@ src/health.rs      health scoring from system signals
 src/report.rs      SUMMARY.md generation
 src/hud.rs         scanning animation helpers
 src/pathcheck.rs   executable lookup without the which crate
+scripts/gate.sh    local and CI quality gates
+scripts/package.sh reproducible Linux release archive
 install.sh         locked release build and atomic installation
 LICENSE            MIT license
+CHANGELOG.md       release history
 ```
 
 Run the local quality gates before publishing a change:
 
 ```bash
-cargo fmt --all -- --check
-cargo check --locked
-cargo test --locked
-cargo clippy --locked --all-targets -- -D warnings
-bash -n install.sh
-git diff --check
+./scripts/gate.sh quick    # format, compile, and tests
+./scripts/gate.sh full     # all checks, including Clippy and shell syntax
+./scripts/gate.sh release  # full checks plus an optimized build
 ```
+
+The gates use `CARGO_TARGET_DIR` when provided; otherwise they keep build
+artifacts in `.cargo-target/` inside the checkout.
+
+## ⟦◌⟧ AUTOMATION // GITHUB WORKFLOWS
+
+- `.github/workflows/ci.yml` runs the `release` gate on every pull request and
+  push to `main`.
+- `.github/workflows/release.yml` runs when a `v*` tag is pushed, packages the
+  Linux binary, creates SHA-256 checksums, and publishes a GitHub Release.
+- `scripts/package.sh` can reproduce the release archive locally.
+
+To cut a release:
+
+```bash
+./scripts/gate.sh release
+git tag -a v0.1.0 -m "release: v0.1.0"
+git push origin main --follow-tags
+```
+
+The workflow publishes an archive containing the binary, README, and MIT
+license. This is a GitHub/source release; the pinned Cybercore dependency is
+Git-based and is not currently published as a crates.io dependency.
 
 ## ⟦⟐⟧ RELEASE STATUS
 
