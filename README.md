@@ -145,8 +145,18 @@ that every system component is healthy.
 Reports are written beneath:
 
 ```text
-~/.arch-sys/system/omniscient/
+~/.local/state/omniscient/
 ```
+
+Omniscient honors `XDG_STATE_HOME` and stores reports in
+`$XDG_STATE_HOME/omniscient` when that variable is set. You can choose a
+different per-user location with `OMNISCIENT_REPORT_DIR`:
+
+```bash
+OMNISCIENT_REPORT_DIR="$HOME/.local/share/omniscient-reports" omniscient
+```
+
+Existing system-specific layouts are not changed or migrated automatically.
 
 For a full scan:
 
@@ -171,6 +181,7 @@ src/tui.rs         dashboard, input, worker thread, and progress state
 src/modules.rs     AuditModule trait and nine audit modules
 src/elevation.rs   sudo default and pkexec opt-in backend selection
 src/health.rs      health scoring from system signals
+src/paths.rs       XDG report-path resolution and per-user override
 src/report.rs      SUMMARY.md generation
 src/hud.rs         scanning animation helpers
 src/pathcheck.rs   executable lookup without the which crate

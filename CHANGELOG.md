@@ -10,6 +10,7 @@ All notable changes to Omniscient are documented here.
 
 ### Added
 
+- XDG-compatible per-user report paths with an explicit override variable.
 - Full-screen Cybercore Ratatui dashboard.
 - Nine selectable system-audit modules.
 - Capability matrix with available, optional, missing, and privileged states.

@@ -2,6 +2,7 @@ use crate::elevation;
 use crate::health::{self, HealthReport};
 use crate::modules;
 use crate::pathcheck;
+use crate::paths;
 use crate::report;
 use anyhow::{Context, Result};
 use chrono::Local;
@@ -21,7 +22,6 @@ use ratatui::{
 use std::{
     collections::VecDeque,
     io::{self, IsTerminal, Stdout},
-    path::{Path, PathBuf},
     process::Command,
     sync::mpsc::{self, Receiver, Sender},
     thread,
@@ -443,7 +443,7 @@ fn worker(selected: Vec<usize>, full: bool, tx: Sender<WorkerMessage>) {
         health.score
     )));
 
-    let base_dir = home_dir().join(".arch-sys/system/omniscient");
+    let base_dir = paths::report_root();
     let timestamp = Local::now().format("%Y-%m-%d_%H-%M-%S").to_string();
     let root = if full {
         base_dir.join(format!("full_system_audit-{timestamp}"))
@@ -988,10 +988,4 @@ fn glyph(palette: UiPalette, unicode: &'static str, ascii: &'static str) -> &'st
 
 fn hostname() -> String {
     std::env::var("HOSTNAME").unwrap_or_else(|_| "unknown-host".to_string())
-}
-
-fn home_dir() -> PathBuf {
-    std::env::var_os("HOME")
-        .map(PathBuf::from)
-        .unwrap_or_else(|| Path::new("/").to_path_buf())
 }
