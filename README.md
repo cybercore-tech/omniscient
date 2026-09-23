@@ -31,8 +31,18 @@ do. `install.sh` checks and tells you if it isn't.
     omniscient
 
 Omniscient opens a full-screen Cybercore TUI with a capability matrix,
-health score, module cards, live scan output, report paths, and an Omarchy
-Polkit authorization popup only when the selected modules need elevated access.
+health score, module cards, live scan output, report paths, and a privilege
+prompt only when the selected modules need elevated access. The portable
+default is terminal `sudo`: the dashboard pauses briefly for authorization and
+then resumes.
+
+On a system with a graphical Polkit agent, a user may opt into a graphical
+authorization flow for their own shell:
+
+    export OMNISCIENT_AUTH=pkexec
+
+Unset `OMNISCIENT_AUTH` (or set it to `sudo`) to use the default terminal
+prompt. Unsupported values also fall back to `sudo`.
 
 Keyboard controls:
 
@@ -56,7 +66,8 @@ original fish version:
 
 ## What changed from the fish version
 
-- **One graphical authorization flow**, not a terminal handoff or one prompt per module.
+- **One authorization flow**, not one prompt per module. Terminal `sudo` is
+  the cross-distro default; graphical Polkit is an explicit per-user opt-in.
 - **No triple-duplicated switch/case** — every module implements a
   small `AuditModule` trait (`src/modules.rs`), and the menu,
   capability matrix, health score, and both audit paths all iterate
@@ -88,8 +99,8 @@ original fish version:
 
 ## Requirements
 
-Rust (stable). Omarchy's Polkit agent authorizes the hardware/storage/snapshot
-and kernel-log modules without leaving the dashboard.
+Rust (stable) and `sudo`. A graphical Polkit agent and `pkexec` are optional;
+set `OMNISCIENT_AUTH=pkexec` only when your desktop provides them.
 Everything else the audit runs is optional — the capability matrix at
 startup shows you exactly what's available on the machine you're
 running it on, and missing tools just get a noted skip in the report

@@ -56,9 +56,8 @@ fn capture_privileged(command: &str, args: &[&str]) -> String {
     if !crate::pathcheck::exists(command) {
         return format!("_{command}: not installed, skipped_\n");
     }
-    let mut pkexec_args = vec![command];
-    pkexec_args.extend_from_slice(args);
-    capture("pkexec", &pkexec_args)
+    let elevated_args = crate::elevation::args(command, args);
+    capture(crate::elevation::program(), &elevated_args)
 }
 
 fn write_report<S: AsRef<str>>(

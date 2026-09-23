@@ -76,8 +76,9 @@ where
                     continue;
                 }
                 let dev = format!("/dev/{disk}");
-                if let Ok(smart) = Command::new("pkexec")
-                    .args(["smartctl", "-H", &dev])
+                let elevated_args = crate::elevation::args("smartctl", &["-H", &dev]);
+                if let Ok(smart) = Command::new(crate::elevation::program())
+                    .args(elevated_args)
                     .output()
                 {
                     let text = String::from_utf8_lossy(&smart.stdout);

@@ -1,3 +1,4 @@
+use crate::elevation;
 use crate::health::{self, HealthReport};
 use crate::modules;
 use crate::pathcheck;
@@ -21,6 +22,7 @@ use std::{
     collections::VecDeque,
     io::{self, IsTerminal, Stdout},
     path::{Path, PathBuf},
+    process::Command,
     sync::mpsc::{self, Receiver, Sender},
     thread,
     time::Duration,
@@ -271,7 +273,7 @@ fn run_loop(terminal: &mut Terminal<CrosstermBackend<Stdout>>, palette: UiPalett
 
         if event::poll(Duration::from_millis(100)).context("polling terminal input")? {
             if let Event::Key(key) = event::read().context("reading terminal input")? {
-                if handle_key(&mut app, key, &mut receiver)? {
+                if handle_key(terminal, &mut app, key, &mut receiver)? {
                     break;
                 }
             }
@@ -283,6 +285,7 @@ fn run_loop(terminal: &mut Terminal<CrosstermBackend<Stdout>>, palette: UiPalett
 }
 
 fn handle_key(
+    terminal: &mut Terminal<CrosstermBackend<Stdout>>,
     app: &mut App,
     key: KeyEvent,
     receiver: &mut Option<Receiver<WorkerMessage>>,
@@ -342,14 +345,18 @@ fn handle_key(
             app.show_details = !app.show_details;
         }
         KeyCode::Enter => {
-            start_run(app, receiver)?;
+            start_run(terminal, app, receiver)?;
         }
         _ => {}
     }
     Ok(false)
 }
 
-fn start_run(app: &mut App, receiver: &mut Option<Receiver<WorkerMessage>>) -> Result<()> {
+fn start_run(
+    terminal: &mut Terminal<CrosstermBackend<Stdout>>,
+    app: &mut App,
+    receiver: &mut Option<Receiver<WorkerMessage>>,
+) -> Result<()> {
     let selected = app.selected_indices();
     if selected.is_empty() {
         app.log("SELECT AT LEAST ONE MODULE");
@@ -361,6 +368,11 @@ fn start_run(app: &mut App, receiver: &mut Option<Receiver<WorkerMessage>>) -> R
         .iter()
         .enumerate()
         .any(|(index, module)| selected.contains(&index) && module.requires_sudo);
+
+    if elevated && !elevation::uses_graphical() && !suspend_for_sudo(terminal)? {
+        app.log("SUDO / authorization canceled; audit not started");
+        return Ok(());
+    }
 
     let full = selected.len() == app.modules.len();
     for (index, module) in app.modules.iter_mut().enumerate() {
@@ -376,7 +388,10 @@ fn start_run(app: &mut App, receiver: &mut Option<Receiver<WorkerMessage>>) -> R
     app.summary_path = None;
     app.logs.clear();
     if elevated {
-        app.log("POLKIT / Omarchy authorization will appear for elevated modules");
+        app.log(format!(
+            "{} / authorization completed for elevated modules",
+            elevation::label()
+        ));
     }
     app.log(if full {
         "FULL SYSTEM AUDIT QUEUED"
@@ -385,6 +400,32 @@ fn start_run(app: &mut App, receiver: &mut Option<Receiver<WorkerMessage>>) -> R
     });
     *receiver = Some(spawn_worker(selected, full));
     Ok(())
+}
+
+fn suspend_for_sudo(terminal: &mut Terminal<CrosstermBackend<Stdout>>) -> Result<bool> {
+    disable_raw_mode().context("pausing terminal input for sudo")?;
+    execute!(
+        terminal.backend_mut(),
+        LeaveAlternateScreen,
+        DisableMouseCapture
+    )
+    .context("leaving the dashboard for sudo")?;
+
+    let result = Command::new("sudo").arg("-v").status();
+
+    execute!(
+        terminal.backend_mut(),
+        EnterAlternateScreen,
+        EnableMouseCapture
+    )
+    .context("returning to the dashboard after sudo")?;
+    enable_raw_mode().context("restoring terminal input after sudo")?;
+    terminal
+        .clear()
+        .context("clearing the dashboard after sudo")?;
+
+    let result = result.context("starting sudo authorization")?;
+    Ok(result.success())
 }
 
 fn spawn_worker(selected: Vec<usize>, full: bool) -> Receiver<WorkerMessage> {
@@ -883,7 +924,7 @@ fn draw_details(frame: &mut Frame, area: Rect, app: &App, palette: UiPalette) {
         )),
         Line::from(Span::styled(
             if module.requires_sudo {
-                "PRIVILEGE / POLKIT AUTH REQUIRED"
+                "PRIVILEGE / ELEVATED AUTH REQUIRED"
             } else {
                 "PRIVILEGE / USER MODE"
             },

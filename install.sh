@@ -14,8 +14,12 @@ fi
 
 BIN_DST="$HOME/.local/bin/omniscient"
 mkdir -p "$HOME/.local/bin"
-cp "$BIN_SRC" "$BIN_DST"
-chmod +x "$BIN_DST"
+# Replace atomically so a currently running instance does not trigger
+# ETXTBSY ("Text file busy") while the new release is installed.
+BIN_TMP="$(mktemp "${BIN_DST}.new.XXXXXX")"
+trap 'rm -f "$BIN_TMP"' EXIT
+install -m 755 "$BIN_SRC" "$BIN_TMP"
+mv -f "$BIN_TMP" "$BIN_DST"
 
 echo "Installed to $BIN_DST"
 

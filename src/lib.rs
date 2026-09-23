@@ -1,3 +1,4 @@
+pub mod elevation;
 pub mod health;
 pub mod hud;
 pub mod modules;
