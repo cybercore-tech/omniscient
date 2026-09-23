@@ -11,6 +11,14 @@ and an `fzf` module picker. The Rust release keeps that spirit while adding a
 structured module registry, live progress, health scoring, capability
 detection, privilege handling, and linked Markdown reports.
 
+> ⟦⟐⟧ **INITIAL RELEASE // v0.1.0** — The first public-ready Cybercore
+> Omniscient release: tested, packaged, and automated through GitHub Actions.
+
+![Omniscient Cybercore dashboard](assets/omniscient-dashboard-v0.1.0.png)
+
+*The first-run dashboard: module selection, live scan output, system identity,
+and capability matrix in one view.*
+
 ## ⟦◆⟧ INSTALLATION // BUILD + DEPLOY
 
 ### Requirements
@@ -168,6 +176,7 @@ src/hud.rs         scanning animation helpers
 src/pathcheck.rs   executable lookup without the which crate
 scripts/gate.sh    local and CI quality gates
 scripts/package.sh reproducible Linux release archive
+assets/             release preview and project visuals
 install.sh         locked release build and atomic installation
 LICENSE            MIT license
 CHANGELOG.md       release history
