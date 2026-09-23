@@ -29,15 +29,23 @@ do. `install.sh` checks and tells you if it isn't.
 
     omniscient
 
-Header, a capability matrix showing which tools this run can actually
-use, a multi-select picker (module names, or "Full System Audit" for
-everything), then a single `sudo -v` prompt up front before anything
-runs.
+Omniscient opens a full-screen Cybercore TUI with a capability matrix,
+health score, module cards, live scan output, report paths, and a single
+`sudo -v` prompt only when the selected modules need elevated access.
 
-Skip the header/matrix/health-score banner and jump straight to the
-picker:
+Keyboard controls:
 
-    omniscient --quiet
+- `↑` / `↓` — move through modules
+- `Space` — select or clear the highlighted module
+- `A` — select all modules / clear all
+- `Enter` — run the selected modules
+- `Tab` — switch between capability matrix and module details
+- `R` — reset the dashboard
+- `Q` / `Esc` — quit when no audit is running
+
+The dashboard is always available in interactive terminals. For a
+non-interactive environment, run the report modules from a real terminal
+or use the underlying library interfaces.
 
 Reports land in `~/.arch-sys/system/omniscient/`, same paths as the
 original fish version:
@@ -59,21 +67,22 @@ original fish version:
   visible note in the report instead of a blank section.
 - **A generated `SUMMARY.md`** (`src/report.rs`) ties every module's
   report together with links. The fish version had no aggregation.
-- **Your actual CYBERGRID hex palette** (`src/palette.rs`) via
+- **Your actual CYBERGRID hex palette** (`cybercore`) via
   true-color ANSI, not xterm-256 approximations.
-- **No `fzf` dependency** — `dialoguer`'s multi-select instead.
+- **Full-screen TUI** — `ratatui` + `crossterm` keep the dashboard
+  responsive while audits run in a worker thread.
 - **No `which` crate** — `src/pathcheck.rs` is a ~15-line hand-rolled
   PATH search, since that's all this project ever needed from it.
 
 ## Layout
 
     src/lib.rs        — module declarations
-    src/main.rs        — entry point: header, matrix, menu, execution
+    src/main.rs        — entry point for the full-screen TUI
+    src/tui.rs         — dashboard, keyboard controls, worker thread, and progress state
     src/modules.rs     — the AuditModule trait + all 9 modules
     src/health.rs      — scoring based on real signal
     src/report.rs      — SUMMARY.md generation
     src/hud.rs         — the scanning animation
-    src/palette.rs     — CYBERGRID true-color helpers
     src/pathcheck.rs   — PATH lookup (replaces the `which` crate)
 
 ## Requirements

@@ -5,19 +5,37 @@ use std::process::Command;
 /// installed. The fish version only ever checked tool presence, so a
 /// fully-populated system with a failing drive or crashed service
 /// scored identically to a genuinely healthy one.
+#[derive(Clone)]
 pub struct HealthReport {
     pub score: i32,
     pub notes: Vec<String>,
 }
 
 pub fn compute(modules: &[Box<dyn AuditModule>]) -> HealthReport {
+    compute_iter(modules.iter().map(|module| module.as_ref()))
+}
+
+pub fn compute_selected(modules: &[Box<dyn AuditModule>], selected: &[usize]) -> HealthReport {
+    compute_iter(
+        selected
+            .iter()
+            .filter_map(|index| modules.get(*index).map(|module| module.as_ref())),
+    )
+}
+
+fn compute_iter<'a, I>(modules: I) -> HealthReport
+where
+    I: IntoIterator<Item = &'a dyn AuditModule>,
+{
     let mut score: i32 = 100;
     let mut notes = Vec::new();
+    let mut smart_requested = false;
 
     // Missing tools: same baseline signal as before, but deduplicated
     // across modules that share a dependency instead of double-counting.
     let mut seen = std::collections::HashSet::new();
     for m in modules {
+        smart_requested |= m.tools().contains(&"smartctl");
         for tool in m.tools() {
             if seen.insert(*tool) && !crate::pathcheck::exists(tool) {
                 score -= 5;
@@ -40,15 +58,12 @@ pub fn compute(modules: &[Box<dyn AuditModule>]) -> HealthReport {
     }
 
     // Real signal #2: SMART health status on any disk that reports it.
-    if crate::pathcheck::exists("smartctl") {
+    if smart_requested && crate::pathcheck::exists("smartctl") {
         if let Ok(out) = Command::new("lsblk").args(["-dn", "-o", "NAME"]).output() {
             let disks = String::from_utf8_lossy(&out.stdout);
             for disk in disks.lines().map(str::trim).filter(|l| !l.is_empty()) {
                 let dev = format!("/dev/{disk}");
-                if let Ok(smart) = Command::new("sudo")
-                    .args(["smartctl", "-H", &dev])
-                    .output()
-                {
+                if let Ok(smart) = Command::new("sudo").args(["smartctl", "-H", &dev]).output() {
                     let text = String::from_utf8_lossy(&smart.stdout);
                     if text.contains("FAILED") {
                         score -= 25;

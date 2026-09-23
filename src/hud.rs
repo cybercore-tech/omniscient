@@ -1,4 +1,4 @@
-use crate::palette;
+use cybercore::palette;
 use std::io::{self, Write};
 use std::thread::sleep;
 use std::time::Duration;

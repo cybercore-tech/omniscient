@@ -18,6 +18,9 @@ pub trait AuditModule {
     /// Tools this module relies on — used for the capability matrix
     /// and the health score, not just duplicated as a magic list.
     fn tools(&self) -> &'static [&'static str];
+    fn requires_sudo(&self) -> bool {
+        false
+    }
     fn run(&self, dir: &Path) -> Result<()>;
 }
 
@@ -42,6 +45,15 @@ fn capture(cmd: &str, args: &[&str]) -> String {
         }
         Err(e) => format!("_{cmd}: failed to run ({e})_\n"),
     }
+}
+
+fn capture_privileged(command: &str, args: &[&str]) -> String {
+    if !crate::pathcheck::exists(command) {
+        return format!("_{command}: not installed, skipped_\n");
+    }
+    let mut sudo_args = vec![command];
+    sudo_args.extend_from_slice(args);
+    capture("sudo", &sudo_args)
 }
 
 fn write_report<S: AsRef<str>>(
@@ -74,6 +86,9 @@ impl AuditModule for Hardware {
     fn tools(&self) -> &'static [&'static str] {
         &["lscpu", "lshw", "lsusb", "lspci"]
     }
+    fn requires_sudo(&self) -> bool {
+        true
+    }
     fn run(&self, dir: &Path) -> Result<()> {
         write_report(
             dir,
@@ -81,7 +96,7 @@ impl AuditModule for Hardware {
             "HARDWARE CORE",
             &[
                 ("lscpu", capture("lscpu", &[])),
-                ("lshw -short", capture("sudo", &["lshw", "-short"])),
+                ("lshw -short", capture_privileged("lshw", &["-short"])),
                 ("lsusb", capture("lsusb", &[])),
                 ("lspci", capture("lspci", &[])),
             ],
@@ -103,6 +118,9 @@ impl AuditModule for Disks {
     fn tools(&self) -> &'static [&'static str] {
         &["lsblk", "smartctl"]
     }
+    fn requires_sudo(&self) -> bool {
+        true
+    }
     fn run(&self, dir: &Path) -> Result<()> {
         let mut sections: Vec<(String, String)> = vec![(
             "lsblk".to_string(),
@@ -115,7 +133,7 @@ impl AuditModule for Disks {
         let disk_list = capture("lsblk", &["-dn", "-o", "NAME"]);
         for disk in disk_list.lines().map(str::trim).filter(|l| !l.is_empty()) {
             let dev = format!("/dev/{disk}");
-            let smart = capture("sudo", &["smartctl", "-i", &dev]);
+            let smart = capture_privileged("smartctl", &["-i", &dev]);
             sections.push((format!("smartctl: {dev}"), smart));
         }
 
@@ -137,6 +155,9 @@ impl AuditModule for Snapshots {
     fn tools(&self) -> &'static [&'static str] {
         &["findmnt", "btrfs"]
     }
+    fn requires_sudo(&self) -> bool {
+        true
+    }
     fn run(&self, dir: &Path) -> Result<()> {
         write_report(
             dir,
@@ -146,7 +167,7 @@ impl AuditModule for Snapshots {
                 ("findmnt -t btrfs", capture("findmnt", &["-t", "btrfs"])),
                 (
                     "btrfs subvolume list /",
-                    capture("sudo", &["btrfs", "subvolume", "list", "/"]),
+                    capture_privileged("btrfs", &["subvolume", "list", "/"]),
                 ),
             ],
         )
@@ -302,7 +323,10 @@ impl AuditModule for Bluetooth {
             dir,
             "bluetooth.md",
             "BLUETOOTH",
-            &[("bluetoothctl devices", capture("bluetoothctl", &["devices"]))],
+            &[(
+                "bluetoothctl devices",
+                capture("bluetoothctl", &["devices"]),
+            )],
         )
     }
 }
@@ -350,4 +374,42 @@ pub fn all_modules() -> Vec<Box<dyn AuditModule>> {
         Box::new(Bluetooth),
         Box::new(ConnectedDevices),
     ]
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::collections::HashSet;
+
+    #[test]
+    fn module_registry_has_unique_slugs_and_labels() {
+        let modules = all_modules();
+        let slugs = modules
+            .iter()
+            .map(|module| module.slug())
+            .collect::<HashSet<_>>();
+        let labels = modules
+            .iter()
+            .map(|module| module.name())
+            .collect::<HashSet<_>>();
+
+        assert_eq!(slugs.len(), modules.len());
+        assert_eq!(labels.len(), modules.len());
+        assert!(modules.iter().all(|module| !module.tools().is_empty()));
+    }
+
+    #[test]
+    fn only_privileged_modules_require_sudo() {
+        let modules = all_modules();
+        let privileged = modules
+            .iter()
+            .filter(|module| module.requires_sudo())
+            .map(|module| module.slug())
+            .collect::<HashSet<_>>();
+
+        assert_eq!(
+            privileged,
+            HashSet::from(["hardware", "disks", "snapshots"])
+        );
+    }
 }
