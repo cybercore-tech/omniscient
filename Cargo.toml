@@ -3,6 +3,8 @@ name = "omniscient"
 version = "0.1.0"
 edition = "2021"
 description = "CYBERDECK full system audit tool"
+license = "MIT"
+repository = "https://github.com/darkstardevx/omniscient"
 
 [lib]
 name = "omniscient"
@@ -17,7 +19,7 @@ anyhow = "=1.0.75"
 chrono = { version = "=0.4.31", default-features = false, features = ["clock"] }
 crossterm = "=0.27.0"
 ratatui = "=0.26.3"
-cybercore = { git = "https://github.com/darkstardevx/cybercore.git", tag = "v0.1.0" }
+cybercore = { version = "0.1.0", git = "https://github.com/darkstardevx/cybercore.git", tag = "v0.1.0" }
 # Transitive pins to keep this buildable on an older cargo (this repo
 # doesn't use these directly, but their newer releases require a
 # cargo/edition version this toolchain doesn't have).

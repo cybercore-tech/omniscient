@@ -24,8 +24,7 @@ mv -f "$BIN_TMP" "$BIN_DST"
 echo "Installed to $BIN_DST"
 
 if command -v omniscient >/dev/null 2>&1; then
-    echo "Done — run 'omniscient' to start, or 'omniscient --quiet' to skip"
-    echo "straight to the module picker."
+    echo "Done — run 'omniscient' to start the Cybercore dashboard."
 else
     echo "Installed, but ~/.local/bin isn't on your \$PATH yet."
     echo "Add this to your shell config, then restart your shell:"

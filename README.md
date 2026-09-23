@@ -1,111 +1,190 @@
-# omniscient
+# ⚡ OMNISCIENT // CYBERCORE SYSTEM AUDIT
 
-A full-system audit tool for the CYBERDECK suite.
+`omniscient` is the full-system audit console for the Cybercore family: a
+Rust-powered, full-screen Ratatui dashboard that turns system inspection into
+a readable, repeatable report.
 
-## Origin
+It began as a fish-shell cyberdeck with an ASCII HUD, a scanning animation,
+and an `fzf` module picker. The Rust release keeps that spirit while adding a
+structured module registry, live progress, health scoring, capability
+detection, privilege handling, and linked Markdown reports.
 
-`omniscient` started life as a fish shell function — an ASCII cyberdeck
-header, a color-cycling "SCANNING..." HUD animation, an `fzf`-driven
-module picker, and nine audit modules covering hardware, storage, btrfs
-snapshots, network, containers, services, kernel logs, bluetooth, and
-connected devices. It worked, and it looked good doing it.
+## 🧰 INSTALLATION // BUILD + DEPLOY
 
-This is the Rust rewrite: same look, same output locations, same
-modules — but with real fixes for the rough edges the fish version
-had accumulated. See [What changed](#what-changed-from-the-fish-version)
-below.
+### Requirements
 
-## Install
+- Linux with an interactive terminal
+- Rust stable and Cargo
+- `sudo` for privileged audit modules
+- `systemd`, `lsblk`, and other audit tools are detected at runtime
+- `pkexec` plus a graphical Polkit agent are optional
 
-    git clone https://github.com/darkstardevx/omniscient.git
-    cd omniscient
-    ./install.sh
+Clone and install:
 
-Builds the release binary in `~/.cargo-target/release/` by default and drops
-the current executable in `~/.local/bin/omniscient`.
-On Omarchy, `~/.local/bin` is already on your `$PATH` — nothing else to
-do. `install.sh` checks and tells you if it isn't.
+```bash
+git clone https://github.com/darkstardevx/omniscient.git
+cd omniscient
+./install.sh
+```
 
-## Use
+The installer:
 
-    omniscient
+- builds a locked release binary;
+- uses `~/.cargo-target/` by default;
+- installs to `~/.local/bin/omniscient`;
+- replaces an active binary atomically, so a running instance does not cause
+  a `Text file busy` failure;
+- checks whether `~/.local/bin` is available on your `PATH`.
 
-Omniscient opens a full-screen Cybercore TUI with a capability matrix,
-health score, module cards, live scan output, report paths, and a privilege
-prompt only when the selected modules need elevated access. The portable
-default is terminal `sudo`: the dashboard pauses briefly for authorization and
-then resumes.
+To choose another Cargo build directory:
 
-On a system with a graphical Polkit agent, a user may opt into a graphical
-authorization flow for their own shell:
+```bash
+CARGO_TARGET_DIR="$HOME/.cache/omniscient-target" ./install.sh
+```
 
-    export OMNISCIENT_AUTH=pkexec
+## 🛰️ USAGE // RUN A SCAN
 
-Unset `OMNISCIENT_AUTH` (or set it to `sudo`) to use the default terminal
-prompt. Unsupported values also fall back to `sudo`.
+Start the dashboard from a real terminal:
 
-Keyboard controls:
+```bash
+omniscient
+```
 
-- `↑` / `↓` — move through modules
-- `Space` — select or clear the highlighted module
-- `A` — select all modules / clear all
-- `Enter` — run the selected modules
-- `Tab` — switch between capability matrix and module details
-- `R` — reset the dashboard
-- `Q` / `Esc` — quit when no audit is running
+The application is intentionally interactive. It requires a TTY so it can
+enter the full-screen dashboard and restore your terminal cleanly when it
+exits.
 
-The dashboard is always available in interactive terminals. For a
-non-interactive environment, run the report modules from a real terminal
-or use the underlying library interfaces.
+### 🎛️ Keyboard controls
 
-Reports land in `~/.arch-sys/system/omniscient/`, same paths as the
-original fish version:
+| Key | Action |
+| --- | --- |
+| `↑` / `↓` or `j` / `k` | Move through audit modules |
+| `Space` | Select or clear the highlighted module |
+| `A` | Select all modules, or clear the current selection |
+| `Enter` | Run the selected modules |
+| `Tab` | Toggle capability matrix and module details |
+| `R` | Reset the dashboard and selection |
+| `Q` / `Esc` | Quit when an audit is not running |
 
-    <slug>-<timestamp>/<slug>.md          — single module
-    full_system_audit-<timestamp>/        — every module, plus SUMMARY.md
+Typical workflow:
 
-## What changed from the fish version
+1. Launch `omniscient`.
+2. Select one or more modules with `Space`, or press `A` for a full audit.
+3. Press `Enter`.
+4. Authorize elevated modules if prompted.
+5. Follow the live scan output and open the final `SUMMARY.md` path.
 
-- **One authorization flow**, not one prompt per module. Terminal `sudo` is
-  the cross-distro default; graphical Polkit is an explicit per-user opt-in.
-- **No triple-duplicated switch/case** — every module implements a
-  small `AuditModule` trait (`src/modules.rs`), and the menu,
-  capability matrix, health score, and both audit paths all iterate
-  the same list.
-- **Real health scoring** (`src/health.rs`) — docks points for actual
-  failed systemd units and SMART `FAILED` disks, not just missing
-  tools.
-- **No silent `2>/dev/null`** — a missing or failing command gets a
-  visible note in the report instead of a blank section.
-- **A generated `SUMMARY.md`** (`src/report.rs`) ties every module's
-  report together with links. The fish version had no aggregation.
-- **Your actual CYBERGRID hex palette** (`cybercore`) via
-  true-color ANSI, not xterm-256 approximations.
-- **Full-screen TUI** — `ratatui` + `crossterm` keep the dashboard
-  responsive while audits run in a worker thread.
-- **No `which` crate** — `src/pathcheck.rs` is a ~15-line hand-rolled
-  PATH search, since that's all this project ever needed from it.
+## 🛡️ AUTH // PRIVILEGE MODES
 
-## Layout
+The repository is distro-neutral. Terminal `sudo` is the default for every
+user and every distribution:
 
-    src/lib.rs        — module declarations
-    src/main.rs        — entry point for the full-screen TUI
-    src/tui.rs         — dashboard, keyboard controls, worker thread, and progress state
-    src/modules.rs     — the AuditModule trait + all 9 modules
-    src/health.rs      — scoring based on real signal
-    src/report.rs      — SUMMARY.md generation
-    src/hud.rs         — the scanning animation
-    src/pathcheck.rs   — PATH lookup (replaces the `which` crate)
+```text
+select privileged modules → dashboard pauses → sudo -v → dashboard resumes
+```
 
-## Requirements
+Only the hardware, storage, Btrfs snapshot, and kernel-log modules request
+elevated access. If authorization is canceled, the dashboard returns without
+starting the audit.
 
-Rust (stable) and `sudo`. A graphical Polkit agent and `pkexec` are optional;
-set `OMNISCIENT_AUTH=pkexec` only when your desktop provides them.
-Everything else the audit runs is optional — the capability matrix at
-startup shows you exactly what's available on the machine you're
-running it on, and missing tools just get a noted skip in the report
-rather than an error.
+Users with a graphical Polkit agent may opt in from their own shell:
 
-## License
+```bash
+export OMNISCIENT_AUTH=pkexec
+omniscient
+```
 
-MIT
+To force the portable terminal flow:
+
+```bash
+OMNISCIENT_AUTH=sudo omniscient
+```
+
+Any unsupported `OMNISCIENT_AUTH` value falls back to `sudo`. The project
+does not impose an Omarchy or desktop-specific default on other users.
+
+## 🧩 MODULE GRID // WHAT GETS INSPECTED
+
+- 🖥️ **Hardware Core** — CPU, hardware inventory, USB, and PCI data
+- 💾 **Storage Matrix** — block devices and SMART health information
+- 📸 **Btrfs Snapshots** — mounted Btrfs filesystems and subvolumes
+- 🌐 **Network Nexus** — interfaces and listening sockets
+- 📦 **Container Realm** — Docker, Flatpak, and Snap inventory
+- ⚙️ **Services & Daemons** — running and failed systemd services
+- 📜 **Kernel Logs** — recent journal entries and kernel messages
+- 📡 **Bluetooth Deep** — visible Bluetooth devices
+- 🔌 **Connected Devices** — displays and audio devices
+
+The capability matrix marks tools as available, missing, optional, or
+privileged before a scan starts. Missing optional tools are recorded as
+skipped instead of being treated as a system failure.
+
+## 🧬 HEALTH // SIGNAL, NOT JUST INVENTORY
+
+The health score starts at `100` and is adjusted using real signals:
+
+- missing required tools;
+- failed systemd units;
+- disks reporting SMART health failure.
+
+The score is a diagnostic signal, not a security certification or a warranty
+that every system component is healthy.
+
+## 📊 REPORTS // WHERE OUTPUT GOES
+
+Reports are written beneath:
+
+```text
+~/.arch-sys/system/omniscient/
+```
+
+For a full scan:
+
+```text
+full_system_audit-YYYY-MM-DD_HH-MM-SS/
+├── hardware-YYYY-MM-DD_HH-MM-SS/hardware.md
+├── storage-YYYY-MM-DD_HH-MM-SS/storage.md
+├── ...
+└── SUMMARY.md
+```
+
+For a selected-module scan, reports are written directly beneath the same
+Omniscient report root and the generated `SUMMARY.md` links to each result.
+Command failures and unavailable tools remain visible in the Markdown output.
+
+## 🧱 PROJECT MAP // DEVELOPMENT
+
+```text
+src/lib.rs         module declarations
+src/main.rs        interactive entry point
+src/tui.rs         dashboard, input, worker thread, and progress state
+src/modules.rs     AuditModule trait and nine audit modules
+src/elevation.rs   sudo default and pkexec opt-in backend selection
+src/health.rs      health scoring from system signals
+src/report.rs      SUMMARY.md generation
+src/hud.rs         scanning animation helpers
+src/pathcheck.rs   executable lookup without the which crate
+install.sh         locked release build and atomic installation
+LICENSE            MIT license
+```
+
+Run the local quality gates before publishing a change:
+
+```bash
+cargo fmt --all -- --check
+cargo check --locked
+cargo test --locked
+cargo clippy --locked --all-targets -- -D warnings
+bash -n install.sh
+git diff --check
+```
+
+## 🚀 RELEASE STATUS
+
+This is a Cybercore `0.1.x` release line: suitable for real local audits and
+continued testing across Linux distributions. The tool reports what it can
+observe and never silently treats unavailable commands as successful checks.
+
+## 📜 LICENSE
+
+Released under the [MIT License](LICENSE).
