@@ -76,7 +76,10 @@ where
                     continue;
                 }
                 let dev = format!("/dev/{disk}");
-                if let Ok(smart) = Command::new("sudo").args(["smartctl", "-H", &dev]).output() {
+                if let Ok(smart) = Command::new("pkexec")
+                    .args(["smartctl", "-H", &dev])
+                    .output()
+                {
                     let text = String::from_utf8_lossy(&smart.stdout);
                     if text.contains("FAILED") {
                         score -= 25;

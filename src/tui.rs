@@ -21,7 +21,6 @@ use std::{
     collections::VecDeque,
     io::{self, IsTerminal, Stdout},
     path::{Path, PathBuf},
-    process::Command,
     sync::mpsc::{self, Receiver, Sender},
     thread,
     time::Duration,
@@ -272,7 +271,7 @@ fn run_loop(terminal: &mut Terminal<CrosstermBackend<Stdout>>, palette: UiPalett
 
         if event::poll(Duration::from_millis(100)).context("polling terminal input")? {
             if let Event::Key(key) = event::read().context("reading terminal input")? {
-                if handle_key(terminal, &mut app, key, &mut receiver)? {
+                if handle_key(&mut app, key, &mut receiver)? {
                     break;
                 }
             }
@@ -284,7 +283,6 @@ fn run_loop(terminal: &mut Terminal<CrosstermBackend<Stdout>>, palette: UiPalett
 }
 
 fn handle_key(
-    terminal: &mut Terminal<CrosstermBackend<Stdout>>,
     app: &mut App,
     key: KeyEvent,
     receiver: &mut Option<Receiver<WorkerMessage>>,
@@ -344,32 +342,25 @@ fn handle_key(
             app.show_details = !app.show_details;
         }
         KeyCode::Enter => {
-            start_run(terminal, app, receiver)?;
+            start_run(app, receiver)?;
         }
         _ => {}
     }
     Ok(false)
 }
 
-fn start_run(
-    terminal: &mut Terminal<CrosstermBackend<Stdout>>,
-    app: &mut App,
-    receiver: &mut Option<Receiver<WorkerMessage>>,
-) -> Result<()> {
+fn start_run(app: &mut App, receiver: &mut Option<Receiver<WorkerMessage>>) -> Result<()> {
     let selected = app.selected_indices();
     if selected.is_empty() {
         app.log("SELECT AT LEAST ONE MODULE");
         return Ok(());
     }
 
-    if app
+    let elevated = app
         .modules
         .iter()
         .enumerate()
-        .any(|(index, module)| selected.contains(&index) && module.requires_sudo)
-    {
-        suspend_for_sudo(terminal)?;
-    }
+        .any(|(index, module)| selected.contains(&index) && module.requires_sudo);
 
     let full = selected.len() == app.modules.len();
     for (index, module) in app.modules.iter_mut().enumerate() {
@@ -384,39 +375,15 @@ fn start_run(
     app.report_paths.clear();
     app.summary_path = None;
     app.logs.clear();
+    if elevated {
+        app.log("POLKIT / Omarchy authorization will appear for elevated modules");
+    }
     app.log(if full {
         "FULL SYSTEM AUDIT QUEUED"
     } else {
         "SELECTED MODULES QUEUED"
     });
     *receiver = Some(spawn_worker(selected, full));
-    Ok(())
-}
-
-fn suspend_for_sudo(terminal: &mut Terminal<CrosstermBackend<Stdout>>) -> Result<()> {
-    disable_raw_mode().context("pausing raw terminal mode for sudo")?;
-    execute!(
-        terminal.backend_mut(),
-        LeaveAlternateScreen,
-        DisableMouseCapture
-    )
-    .context("leaving the TUI for sudo")?;
-    println!("Omniscient needs elevated access for the selected audit modules.");
-    let status = Command::new("sudo")
-        .arg("-v")
-        .status()
-        .context("running sudo -v")?;
-    execute!(
-        terminal.backend_mut(),
-        EnterAlternateScreen,
-        EnableMouseCapture
-    )
-    .context("restoring the TUI after sudo")?;
-    enable_raw_mode().context("restoring raw terminal mode")?;
-    terminal.clear().context("redrawing after sudo")?;
-    if !status.success() {
-        anyhow::bail!("sudo authentication failed or was declined");
-    }
     Ok(())
 }
 
@@ -916,7 +883,7 @@ fn draw_details(frame: &mut Frame, area: Rect, app: &App, palette: UiPalette) {
         )),
         Line::from(Span::styled(
             if module.requires_sudo {
-                "PRIVILEGE / SUDO REQUIRED"
+                "PRIVILEGE / POLKIT AUTH REQUIRED"
             } else {
                 "PRIVILEGE / USER MODE"
             },

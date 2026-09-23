@@ -56,9 +56,9 @@ fn capture_privileged(command: &str, args: &[&str]) -> String {
     if !crate::pathcheck::exists(command) {
         return format!("_{command}: not installed, skipped_\n");
     }
-    let mut sudo_args = vec![command];
-    sudo_args.extend_from_slice(args);
-    capture("sudo", &sudo_args)
+    let mut pkexec_args = vec![command];
+    pkexec_args.extend_from_slice(args);
+    capture("pkexec", &pkexec_args)
 }
 
 fn write_report<S: AsRef<str>>(

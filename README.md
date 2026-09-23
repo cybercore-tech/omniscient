@@ -31,8 +31,8 @@ do. `install.sh` checks and tells you if it isn't.
     omniscient
 
 Omniscient opens a full-screen Cybercore TUI with a capability matrix,
-health score, module cards, live scan output, report paths, and a single
-`sudo -v` prompt only when the selected modules need elevated access.
+health score, module cards, live scan output, report paths, and an Omarchy
+Polkit authorization popup only when the selected modules need elevated access.
 
 Keyboard controls:
 
@@ -56,7 +56,7 @@ original fish version:
 
 ## What changed from the fish version
 
-- **One sudo prompt**, not one per module.
+- **One graphical authorization flow**, not a terminal handoff or one prompt per module.
 - **No triple-duplicated switch/case** — every module implements a
   small `AuditModule` trait (`src/modules.rs`), and the menu,
   capability matrix, health score, and both audit paths all iterate
@@ -88,7 +88,8 @@ original fish version:
 
 ## Requirements
 
-Rust (stable). `sudo` for the hardware/storage/snapshot modules.
+Rust (stable). Omarchy's Polkit agent authorizes the hardware/storage/snapshot
+and kernel-log modules without leaving the dashboard.
 Everything else the audit runs is optional — the capability matrix at
 startup shows you exactly what's available on the machine you're
 running it on, and missing tools just get a noted skip in the report
