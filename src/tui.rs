@@ -132,6 +132,7 @@ struct ModuleView {
     slug: &'static str,
     menu_label: &'static str,
     tools: &'static [&'static str],
+    optional_tools: &'static [&'static str],
     requires_sudo: bool,
     selected: bool,
     state: ModuleState,
@@ -169,6 +170,7 @@ impl App {
                 slug: module.slug(),
                 menu_label: module.menu_label(),
                 tools: module.tools(),
+                optional_tools: module.optional_tools(),
                 requires_sudo: module.requires_sudo(),
                 selected: false,
                 state: ModuleState::Pending,
@@ -846,7 +848,15 @@ fn draw_capabilities(frame: &mut Frame, area: Rect, app: &App, palette: UiPalett
         let privileged = app.modules.iter().any(|module| {
             module.requires_sudo && module.tools.iter().any(|candidate| candidate == tool)
         });
-        let (marker, state, color) = if !present {
+        let optional = app.modules.iter().any(|module| {
+            module
+                .optional_tools
+                .iter()
+                .any(|candidate| candidate == tool)
+        });
+        let (marker, state, color) = if !present && optional {
+            (glyph(palette, "◇", "~"), "OPTIONAL", palette.orange)
+        } else if !present {
             (glyph(palette, "○", "-"), "MISSING", palette.red)
         } else if privileged {
             (glyph(palette, "◆", "!"), "PRIVILEGED", palette.orange)

@@ -18,6 +18,11 @@ pub trait AuditModule {
     /// Tools this module relies on — used for the capability matrix
     /// and the health score, not just duplicated as a magic list.
     fn tools(&self) -> &'static [&'static str];
+    /// Tools that improve coverage when installed but should not lower the
+    /// health score when intentionally absent on this system.
+    fn optional_tools(&self) -> &'static [&'static str] {
+        &[]
+    }
     fn requires_sudo(&self) -> bool {
         false
     }
@@ -130,8 +135,15 @@ impl AuditModule for Disks {
         // Per-disk SMART info, same as the fish version's loop, but
         // each disk gets its own labeled section instead of one
         // undifferentiated blob.
-        let disk_list = capture("lsblk", &["-dn", "-o", "NAME"]);
-        for disk in disk_list.lines().map(str::trim).filter(|l| !l.is_empty()) {
+        let disk_list = capture("lsblk", &["-dn", "-o", "NAME,TYPE"]);
+        for line in disk_list.lines() {
+            let mut fields = line.split_whitespace();
+            let Some(disk) = fields.next() else {
+                continue;
+            };
+            if fields.next() != Some("disk") {
+                continue;
+            }
             let dev = format!("/dev/{disk}");
             let smart = capture_privileged("smartctl", &["-i", &dev]);
             sections.push((format!("smartctl: {dev}"), smart));
@@ -215,6 +227,9 @@ impl AuditModule for Containers {
     fn tools(&self) -> &'static [&'static str] {
         &["docker", "flatpak", "snap"]
     }
+    fn optional_tools(&self) -> &'static [&'static str] {
+        &["flatpak", "snap"]
+    }
     fn run(&self, dir: &Path) -> Result<()> {
         write_report(
             dir,
@@ -279,6 +294,9 @@ impl AuditModule for Logs {
     fn tools(&self) -> &'static [&'static str] {
         &["journalctl", "dmesg"]
     }
+    fn requires_sudo(&self) -> bool {
+        true
+    }
     fn run(&self, dir: &Path) -> Result<()> {
         write_report(
             dir,
@@ -293,7 +311,7 @@ impl AuditModule for Logs {
 }
 
 fn tail_dmesg() -> String {
-    let full = capture("dmesg", &[]);
+    let full = capture_privileged("dmesg", &[]);
     full.lines()
         .rev()
         .take(50)
@@ -343,7 +361,10 @@ impl AuditModule for ConnectedDevices {
         "🔌 Connected Devices"
     }
     fn tools(&self) -> &'static [&'static str] {
-        &["xrandr", "aplay"]
+        &["hyprctl", "wlr-randr", "xrandr", "aplay"]
+    }
+    fn optional_tools(&self) -> &'static [&'static str] {
+        &["hyprctl", "wlr-randr", "xrandr"]
     }
     fn run(&self, dir: &Path) -> Result<()> {
         write_report(
@@ -351,10 +372,20 @@ impl AuditModule for ConnectedDevices {
             "devices.md",
             "DEVICES",
             &[
-                ("xrandr", capture("xrandr", &[])),
+                ("display outputs", display_report()),
                 ("aplay -l", capture("aplay", &["-l"])),
             ],
         )
+    }
+}
+
+fn display_report() -> String {
+    if crate::pathcheck::exists("hyprctl") {
+        capture("hyprctl", &["monitors", "all"])
+    } else if crate::pathcheck::exists("wlr-randr") {
+        capture("wlr-randr", &[])
+    } else {
+        capture("xrandr", &[])
     }
 }
 
@@ -409,7 +440,22 @@ mod tests {
 
         assert_eq!(
             privileged,
-            HashSet::from(["hardware", "disks", "snapshots"])
+            HashSet::from(["hardware", "disks", "snapshots", "logs"])
+        );
+    }
+
+    #[test]
+    fn desktop_package_and_display_tools_are_optional() {
+        let modules = all_modules();
+        let optional = modules
+            .iter()
+            .flat_map(|module| module.optional_tools())
+            .copied()
+            .collect::<HashSet<_>>();
+
+        assert_eq!(
+            optional,
+            HashSet::from(["flatpak", "snap", "hyprctl", "wlr-randr", "xrandr"])
         );
     }
 }

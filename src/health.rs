@@ -37,6 +37,9 @@ where
     for m in modules {
         smart_requested |= m.tools().contains(&"smartctl");
         for tool in m.tools() {
+            if m.optional_tools().contains(tool) {
+                continue;
+            }
             if seen.insert(*tool) && !crate::pathcheck::exists(tool) {
                 score -= 5;
                 notes.push(format!("missing tool: {tool}"));
@@ -59,9 +62,19 @@ where
 
     // Real signal #2: SMART health status on any disk that reports it.
     if smart_requested && crate::pathcheck::exists("smartctl") {
-        if let Ok(out) = Command::new("lsblk").args(["-dn", "-o", "NAME"]).output() {
+        if let Ok(out) = Command::new("lsblk")
+            .args(["-dn", "-o", "NAME,TYPE"])
+            .output()
+        {
             let disks = String::from_utf8_lossy(&out.stdout);
-            for disk in disks.lines().map(str::trim).filter(|l| !l.is_empty()) {
+            for line in disks.lines() {
+                let mut fields = line.split_whitespace();
+                let Some(disk) = fields.next() else {
+                    continue;
+                };
+                if fields.next() != Some("disk") {
+                    continue;
+                }
                 let dev = format!("/dev/{disk}");
                 if let Ok(smart) = Command::new("sudo").args(["smartctl", "-H", &dev]).output() {
                     let text = String::from_utf8_lossy(&smart.stdout);
