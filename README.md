@@ -21,6 +21,38 @@ detection, privilege handling, and linked Markdown reports.
 *The first-run dashboard: module selection, live scan output, system identity,
 and capability matrix in one view.*
 
+## ⟦▥⟧ VISUAL WALKTHROUGH // THE OMNISCIENT SURFACE
+
+These sanitized captures show the complete operator flow: launch a scan,
+inspect device output, review repair guidance, and read the evidence in place.
+Machine-specific usernames, hostnames, network addresses, hardware addresses,
+and filesystem identifiers have been removed from the public previews.
+
+<table>
+  <tr>
+    <td width="50%"><img src="assets/screenshots/omniscient-01-system-audit.png" alt="Omniscient system audit overview"></td>
+    <td width="50%"><img src="assets/screenshots/omniscient-02-bluetooth-report.png" alt="Omniscient Bluetooth report viewer"></td>
+  </tr>
+  <tr>
+    <td align="center"><sub>SYSTEM AUDIT / MODULE REGISTRY</sub></td>
+    <td align="center"><sub>REPORT READER / BLUETOOTH</sub></td>
+  </tr>
+  <tr>
+    <td width="50%"><img src="assets/screenshots/omniscient-03-fix-center.png" alt="Omniscient Fix Center repair controls"></td>
+    <td width="50%"><img src="assets/screenshots/omniscient-04-logs-report.png" alt="Omniscient sanitized logs report"></td>
+  </tr>
+  <tr>
+    <td align="center"><sub>FIX CENTER / MANUAL OR AUTHORIZED REPAIR</sub></td>
+    <td align="center"><sub>REPORT READER / LOG SIGNAL</sub></td>
+  </tr>
+  <tr>
+    <td colspan="2" align="center"><img src="assets/screenshots/omniscient-05-snapshots-report.png" alt="Omniscient Btrfs snapshots report"></td>
+  </tr>
+  <tr>
+    <td colspan="2" align="center"><sub>REPORT READER / BTRFS SNAPSHOTS</sub></td>
+  </tr>
+</table>
+
 ## ⟦◆⟧ INSTALLATION // BUILD + DEPLOY
 
 ### Requirements
