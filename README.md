@@ -62,6 +62,16 @@ Start the dashboard from a real terminal:
 omniscient
 ```
 
+The Omarchy HUD uses the non-interactive surface mode instead:
+
+```bash
+omniscient --hud
+```
+
+That mode runs the full audit while publishing progress and report paths to
+the local snapshot contract. The Omarchy panel can launch it in place and
+render completed Markdown reports without opening a second terminal.
+
 The application is intentionally interactive. It requires a TTY so it can
 enter the full-screen dashboard and restore your terminal cleanly when it
 exits.
@@ -194,7 +204,8 @@ states, summary path, and any fatal error without exposing command output.
 ```text
 src/lib.rs         module declarations
 src/main.rs        interactive entry point
-src/tui.rs         dashboard, input, worker thread, and progress state
+src/tui.rs         interactive dashboard, input, worker thread, and progress state
+src/headless.rs    in-panel audit runner and snapshot publishing
 src/modules.rs     AuditModule trait and nine audit modules
 src/elevation.rs   sudo default and pkexec opt-in backend selection
 src/health.rs      health scoring from system signals
