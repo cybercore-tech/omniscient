@@ -20,10 +20,10 @@ BarWidget {
       ? "Omniscient / health " + SnapshotReader.healthScore + "/100"
       : "Omniscient / waiting for snapshot"
     foreground: SnapshotReader.state === "error"
-      ? Color.error
+      ? Color.urgent
       : SnapshotReader.state === "running"
         ? Color.accent
-        : Color.primary
+        : Color.foreground
     fixedWidth: root.bar && root.bar.vertical ? -1 : Style.space(34)
     fixedHeight: root.bar && root.bar.vertical ? Style.space(26) : -1
     onPressed: function(b) {
