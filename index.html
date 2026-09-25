@@ -38,8 +38,17 @@ a { color:inherit; }
 .theme-picker-btn:hover { box-shadow:0 0 18px color-mix(in srgb,var(--pink) 24%,transparent); }
 .swatch { width:8px; height:8px; display:inline-block; border-radius:50%; background:var(--acid); box-shadow:0 0 8px currentColor; }
 .theme-menu { position:absolute; top:calc(100% + 8px); right:0; width:230px; max-height:360px; overflow:auto; z-index:30; padding:6px; border:1px solid var(--line); background:var(--panel); box-shadow:var(--shadow); }
-.theme-menu button { width:100%; display:flex; align-items:center; gap:8px; border:0; background:transparent; color:var(--fg); padding:8px 9px; cursor:pointer; font:inherit; font-size:.68rem; text-align:left; text-transform:uppercase; }
-.theme-menu button:hover,.theme-menu button.active { color:var(--acid); background:color-mix(in srgb,var(--acid) 13%,transparent); }
+.theme-menu button { width:100%; display:flex; align-items:center; gap:8px; border:0; background:transparent; color:var(--fg); padding:8px 9px; cursor:pointer; font:inherit; font-size:.68rem; text-align:left; text-transform:uppercase; transition:color .14s ease,background .14s ease,box-shadow .14s ease; }
+.theme-group-label { margin:4px 0 2px; padding:8px 9px 5px; border-left:2px solid var(--family-accent,var(--cyan)); border-bottom:1px solid color-mix(in srgb,var(--family-accent,var(--cyan)) 35%,transparent); color:var(--family-accent,var(--cyan)); background:color-mix(in srgb,var(--family-accent,var(--cyan)) 8%,var(--panel)); font-size:.61rem; font-weight:700; letter-spacing:.14em; line-height:1.25; }
+.theme-group-label[data-family="cybercore-tech"],.theme-option[data-family="cybercore-tech"] { --family-accent:#c8e967; --family-alt:#52e8ff; }
+.theme-group-label[data-family="cyberdyne"],.theme-option[data-family="cyberdyne"] { --family-accent:#00cc00; --family-alt:#66ff66; }
+.theme-group-label[data-family="cyberpunk"],.theme-option[data-family="cyberpunk"] { --family-accent:#ff0055; --family-alt:#bf00ff; }
+.theme-group-label[data-family="default"],.theme-option[data-family="default"] { --family-accent:#7dcfff; --family-alt:#bb9af7; }
+.theme-group-label[data-family="dystopian"],.theme-option[data-family="dystopian"] { --family-accent:#d4e157; --family-alt:#e65100; }
+.theme-group-label[data-family="neosynth"],.theme-option[data-family="neosynth"] { --family-accent:#00ff8c; --family-alt:#ff2a9d; }
+.theme-group-label[data-family="synthwave"],.theme-option[data-family="synthwave"] { --family-accent:#4cc9f0; --family-alt:#ff007f; }
+.theme-option:hover,.theme-option[aria-selected="true"] { color:var(--family-accent,var(--cyan)); background:color-mix(in srgb,var(--family-accent,var(--cyan)) 16%,var(--panel)); box-shadow:inset 2px 0 var(--family-accent,var(--cyan)); }
+.theme-option[data-tone="alt"]:hover { color:var(--family-alt,var(--pink)); background:color-mix(in srgb,var(--family-alt,var(--pink)) 16%,var(--panel)); box-shadow:inset 2px 0 var(--family-alt,var(--pink)); }
 .swatches { display:flex; gap:3px; margin-left:auto; }
 .swatches i { width:10px; height:10px; border-radius:1px; }
 .hero { padding:86px 0 64px; }
@@ -277,14 +286,16 @@ let saved = 'neon-night'; try { saved = localStorage.getItem('omniscient-theme')
   Object.entries(FAMILIES).forEach(([family, names]) => {
     const heading = document.createElement("div");
     heading.className = "theme-group-label";
+    heading.dataset.family = family;
     heading.textContent = LABELS[family];
     themeMenu.appendChild(heading);
-    names.forEach(name => {
+    names.forEach((name, index) => {
       const option = document.createElement("button");
       option.type = "button";
       option.className = "theme-option";
       option.dataset.value = name;
       option.dataset.family = family;
+      option.dataset.tone = index % 2 === 0 ? "base" : "alt";
       option.setAttribute("role", "option");
       option.textContent = display(name);
       option.addEventListener("click", () => applyCanonical(name));
