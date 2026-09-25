@@ -23,7 +23,7 @@ BarWidget {
       : SnapshotReader.state === "running"
         ? Color.accent
         : Color.foreground
-    fixedWidth: root.bar && root.bar.vertical ? -1 : Style.space(38)
+    fixedWidth: root.bar && root.bar.vertical ? -1 : Style.space(26)
     fixedHeight: root.bar && root.bar.vertical ? Style.space(26) : -1
     onPressed: function(b) {
       if (!root.bar) return
@@ -33,14 +33,14 @@ BarWidget {
     Item {
       id: cybercoreMark
       z: 1
-      width: Style.space(25)
-      height: Style.space(25)
+      width: Style.space(18)
+      height: Style.space(18)
       anchors.centerIn: parent
 
       Rectangle {
         id: outerDiamond
-        width: Style.space(17)
-        height: Style.space(17)
+        width: Style.space(13)
+        height: Style.space(13)
         anchors.centerIn: parent
         rotation: 45
         radius: 4
@@ -52,8 +52,8 @@ BarWidget {
       }
 
       Rectangle {
-        width: Style.space(7)
-        height: Style.space(7)
+        width: Style.space(5)
+        height: Style.space(5)
         anchors.centerIn: parent
         rotation: 45
         color: "#111824"
@@ -62,7 +62,7 @@ BarWidget {
       }
 
       Rectangle {
-        width: Style.space(9)
+        width: Style.space(7)
         height: 2
         anchors.centerIn: parent
         rotation: -45
@@ -71,8 +71,8 @@ BarWidget {
       }
 
       Rectangle {
-        width: Style.space(4)
-        height: Style.space(4)
+        width: Style.space(3)
+        height: Style.space(3)
         anchors.top: outerDiamond.top
         anchors.right: outerDiamond.right
         radius: 2
