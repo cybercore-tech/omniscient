@@ -6,6 +6,8 @@
 Rust-powered, full-screen Ratatui dashboard that turns system inspection into
 a readable, repeatable report.
 
+**Live console:** [cybercore-tech.github.io/omniscient](https://cybercore-tech.github.io/omniscient/)
+
 It began as a fish-shell cyberdeck with an ASCII HUD, a scanning animation,
 and an `fzf` module picker. The Rust release keeps that spirit while adding a
 structured module registry, live progress, health scoring, capability
