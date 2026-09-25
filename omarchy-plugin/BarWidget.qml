@@ -14,8 +14,8 @@ BarWidget {
     anchors.fill: parent
     bar: root.bar
     text: SnapshotReader.available && SnapshotReader.healthScore >= 0
-      ? "◈ " + SnapshotReader.healthScore
-      : "◈"
+      ? "OMNI " + SnapshotReader.healthScore
+      : "OMNI"
     tooltipText: SnapshotReader.available
       ? "Omniscient / health " + SnapshotReader.healthScore + "/100"
       : "Omniscient / waiting for snapshot"
@@ -24,7 +24,7 @@ BarWidget {
       : SnapshotReader.state === "running"
         ? Color.accent
         : Color.foreground
-    fixedWidth: root.bar && root.bar.vertical ? -1 : Style.space(34)
+    fixedWidth: root.bar && root.bar.vertical ? -1 : Style.space(64)
     fixedHeight: root.bar && root.bar.vertical ? Style.space(26) : -1
     onPressed: function(b) {
       if (!root.bar) return
