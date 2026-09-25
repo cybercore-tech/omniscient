@@ -2,6 +2,7 @@ import QtQuick
 import QtQuick.Layouts
 import Quickshell
 import Quickshell.Wayland
+import qs.Commons
 
 Item {
   id: root
@@ -36,6 +37,10 @@ Item {
 
   function moduleStateColor(state) {
     return SnapshotReader.stateColor(state)
+  }
+
+  function launchAudit() {
+    Util.execDetached("omarchy-launch-terminal omniscient")
   }
 
   PanelWindow {
@@ -146,6 +151,27 @@ Item {
               text: SnapshotReader.errorMessage.length ? SnapshotReader.errorMessage : SnapshotReader.snapshotPath
               color: SnapshotReader.errorMessage.length ? "#ff667d" : "#8290a4"
               font.family: "monospace"; font.pixelSize: 8; elide: Text.ElideMiddle
+            }
+            Rectangle {
+              Layout.preferredWidth: 170
+              Layout.preferredHeight: 30
+              radius: 4
+              color: "#121c2b"
+              border.width: 1
+              border.color: "#ff4f9a"
+              Text {
+                anchors.centerIn: parent
+                text: "RUN OMNISCIENT"
+                color: "#ff4f9a"
+                font.family: "monospace"
+                font.pixelSize: 9
+                font.bold: true
+              }
+              MouseArea {
+                anchors.fill: parent
+                cursorShape: Qt.PointingHandCursor
+                onClicked: root.launchAudit()
+              }
             }
           }
         }
