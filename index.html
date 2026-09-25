@@ -111,12 +111,19 @@ pre .key { color:var(--cyan); } pre .value { color:var(--acid); } pre .string { 
 .dashboard { border:1px solid var(--line); background:var(--panel); padding:9px; position:relative; }
 .dashboard img { display:block; width:100%; height:auto; border:1px solid var(--line); filter:saturate(.86) contrast(1.05); }
 .dashboard::before { content:"LIVE AUDIT SURFACE / OMNISCIENT"; position:absolute; left:22px; top:20px; z-index:2; color:var(--acid); background:rgba(8,11,18,.82); padding:4px 7px; font-size:.57rem; letter-spacing:.1em; }
+.showcase-grid { display:grid; grid-template-columns:repeat(2,1fr); gap:14px; }
+.showcase-card { margin:0; padding:9px; border:1px solid var(--line); background:linear-gradient(145deg,color-mix(in srgb,var(--panel) 96%,transparent),color-mix(in srgb,var(--purple) 8%,var(--panel))); box-shadow:var(--shadow); }
+.showcase-card img { display:block; width:100%; aspect-ratio:5 / 3; object-fit:cover; border:1px solid var(--line); filter:saturate(.88) contrast(1.04); transition:transform .28s var(--ease),border-color .28s var(--ease),box-shadow .28s var(--ease); }
+.showcase-card:hover img { transform:translateY(-3px); border-color:var(--cyan); box-shadow:0 12px 30px color-mix(in srgb,var(--cyan) 16%,transparent); }
+.showcase-card figcaption { display:flex; justify-content:space-between; gap:12px; padding:11px 4px 2px; color:var(--muted); font-size:.61rem; letter-spacing:.09em; text-transform:uppercase; }
+.showcase-card figcaption b { color:var(--cyan); font-weight:600; }
+.showcase-card.wide { grid-column:1 / -1; }
 .install { border:1px solid var(--line); background:linear-gradient(120deg,color-mix(in srgb,var(--pink) 8%,var(--panel)),var(--panel)); padding:34px; display:flex; align-items:center; justify-content:space-between; gap:25px; }
 .install h2 { font-size:2rem; } .install p { color:var(--muted); font-family:var(--font-ui); max-width:560px; margin:7px 0 0; }
 footer { border-top:1px solid var(--line); padding:30px 0 44px; color:var(--muted); font-size:.68rem; }
 .foot { display:flex; align-items:center; justify-content:space-between; gap:20px; } .foot-links { display:flex; gap:17px; } .foot a { color:var(--cyan); text-decoration:none; } .foot a:hover { color:var(--acid); }
 @media (max-width:900px) { .hero-grid,.split { grid-template-columns:1fr; } .hero-art { min-height:350px; order:-1; } .schema-grid { grid-template-columns:repeat(3,1fr); } .module-list { grid-template-columns:repeat(2,1fr); } }
-@media (max-width:620px) { .wrap { width:min(100% - 26px,1160px); } .topbar-inner { min-height:62px; } .nav a { display:none; } h1 { font-size:4rem; } .hero { padding-top:52px; } .schema-grid,.module-list { grid-template-columns:1fr; } .section-head,.install,.foot { display:block; } .section-head p { margin-top:15px; } .install .btn { margin-top:20px; } .foot-links { margin-top:17px; } }
+@media (max-width:620px) { .wrap { width:min(100% - 26px,1160px); } .topbar-inner { min-height:62px; } .nav a { display:none; } h1 { font-size:4rem; } .hero { padding-top:52px; } .schema-grid,.module-list,.showcase-grid { grid-template-columns:1fr; } .section-head,.install,.foot { display:block; } .section-head p { margin-top:15px; } .install .btn { margin-top:20px; } .foot-links { margin-top:17px; } }
 </style>
 </head>
 <body>
@@ -127,7 +134,7 @@ footer { border-top:1px solid var(--line); padding:30px 0 44px; color:var(--mute
       <span>OMNISCIENT</span><em>/</em><span>CYBERCORE</span>
     </a>
     <div class="nav">
-      <a href="#surface">Surface</a><a href="#modules">Modules</a><a href="#reports">Reports</a><a href="https://github.com/cybercore-tech/omniscient">Source</a>
+      <a href="#surface">Surface</a><a href="#modules">Modules</a><a href="#reports">Reports</a><a href="#showcase">Showcase</a><a href="https://github.com/cybercore-tech/omniscient">Source</a>
       <div class="theme-picker">
         <button class="theme-picker-btn" id="themeButton" aria-expanded="false"><i class="swatch"></i><span id="themeLabel">neon night</span><span>⌄</span></button>
         <div class="theme-menu" id="themeMenu" hidden></div>
@@ -213,6 +220,19 @@ footer { border-top:1px solid var(--line); padding:30px 0 44px; color:var(--mute
 <span class="value">PASS</span>  network.md
 <span class="value">WARN</span>  smartctl unavailable
 <span class="value">PASS</span>  SUMMARY.md</pre></div></div></div>
+  </div>
+</section>
+
+<section id="showcase">
+  <div class="wrap">
+    <div class="section-head"><div><div class="kicker">Operator walkthrough</div><h2>From scan<br>to signal.</h2></div><p>One continuous surface for the audit, repair decision, and evidence trail. The public captures are sanitized and color-matched as a single gallery.</p></div>
+    <div class="showcase-grid">
+      <figure class="showcase-card"><img src="assets/screenshots/omniscient-01-system-audit.png" alt="Omniscient system audit overview"><figcaption><b>01 / SYSTEM AUDIT</b><span>module registry</span></figcaption></figure>
+      <figure class="showcase-card"><img src="assets/screenshots/omniscient-02-bluetooth-report.png" alt="Omniscient Bluetooth report viewer"><figcaption><b>02 / REPORT READER</b><span>bluetooth</span></figcaption></figure>
+      <figure class="showcase-card"><img src="assets/screenshots/omniscient-03-fix-center.png" alt="Omniscient Fix Center repair controls"><figcaption><b>03 / FIX CENTER</b><span>manual or authorized repair</span></figcaption></figure>
+      <figure class="showcase-card"><img src="assets/screenshots/omniscient-04-logs-report.png" alt="Omniscient logs report viewer"><figcaption><b>04 / REPORT READER</b><span>log signal</span></figcaption></figure>
+      <figure class="showcase-card wide"><img src="assets/screenshots/omniscient-05-snapshots-report.png" alt="Omniscient Btrfs snapshots report"><figcaption><b>05 / REPORT READER</b><span>Btrfs snapshots</span></figcaption></figure>
+    </div>
   </div>
 </section>
 
