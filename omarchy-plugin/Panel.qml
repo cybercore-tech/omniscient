@@ -40,7 +40,8 @@ Item {
   }
 
   function launchAudit() {
-    Util.execDetached("omarchy-launch-terminal omniscient")
+    root.close()
+    Util.execDetached("omarchy-launch-or-focus-tui --app-id=omniscient-popup omniscient")
   }
 
   PanelWindow {
