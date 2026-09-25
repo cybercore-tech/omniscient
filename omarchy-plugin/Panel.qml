@@ -9,6 +9,7 @@ Item {
   id: root
 
   readonly property string selfId: "io.github.cybercore-tech.omniscient"
+  readonly property string omniscientBinary: (Quickshell.env("HOME") || "") + "/.local/bin/omniscient"
   readonly property int fontMicro: 10
   readonly property int fontSmall: 11
   readonly property int fontBody: 12
@@ -83,9 +84,21 @@ Item {
   }
 
   function openReport(path) {
+    if (!isSafeReportPath(path)) {
+      root.reportText = "REPORT REJECTED / UNSAFE LOCAL PATH"
+      return
+    }
     root.selectedReport = path
     root.reportText = "LOADING REPORT..."
     reportReader.running = true
+  }
+
+  function isSafeReportPath(path) {
+    var value = String(path || "")
+    return value.startsWith("/")
+      && value.endsWith(".md")
+      && value.indexOf("/../") < 0
+      && value.indexOf("/omniscient/") >= 0
   }
 
   function escapeHtml(value) {
@@ -167,7 +180,7 @@ Item {
 
   Process {
     id: auditRunner
-    command: ["sh", "-lc", "OMNISCIENT_AUTH=pkexec exec omniscient --hud"]
+    command: ["/usr/bin/env", "OMNISCIENT_AUTH=pkexec", root.omniscientBinary, "--hud"]
     stderr: StdioCollector { id: auditStderr; waitForEnd: true }
     onExited: function(exitCode) {
       SnapshotReader.refresh()
@@ -184,8 +197,8 @@ Item {
   Process {
     id: fixRunner
     command: root.pendingFixId.length
-      ? ["sh", "-lc", "OMNISCIENT_AUTH=pkexec exec omniscient --fix " + Util.shellQuote(root.pendingFixId)]
-      : ["true"]
+      ? ["/usr/bin/env", "OMNISCIENT_AUTH=pkexec", root.omniscientBinary, "--fix", root.pendingFixId]
+      : ["/usr/bin/true"]
     stdout: StdioCollector { id: fixStdout; waitForEnd: true }
     stderr: StdioCollector { id: fixStderr; waitForEnd: true }
     onExited: function(exitCode) {
@@ -204,7 +217,7 @@ Item {
 
   Process {
     id: reportReader
-    command: root.selectedReport.length ? ["cat", root.selectedReport] : ["true"]
+    command: root.selectedReport.length ? ["/usr/bin/cat", root.selectedReport] : ["/usr/bin/true"]
     stdout: StdioCollector {
       id: reportStdout
       waitForEnd: true

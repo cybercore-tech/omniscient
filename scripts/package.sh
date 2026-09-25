@@ -26,6 +26,7 @@ STAGE_DIR="$TEMP_DIR/$ARCHIVE_NAME"
 mkdir -p "$STAGE_DIR"
 install -m 755 "$BIN_SRC" "$STAGE_DIR/omniscient"
 install -m 644 README.md "$STAGE_DIR/README.md"
+install -m 644 SECURITY.md "$STAGE_DIR/SECURITY.md"
 install -m 644 LICENSE "$STAGE_DIR/LICENSE"
 if [[ -d assets ]]; then
     cp -R assets "$STAGE_DIR/assets"

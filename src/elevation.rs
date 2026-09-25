@@ -5,8 +5,15 @@
 //! `OMNISCIENT_AUTH=pkexec` in their own environment.
 
 use anyhow::{bail, Context, Result};
-use std::path::Path;
+use std::fs;
+use std::os::unix::fs::MetadataExt;
+use std::path::{Component, Path, PathBuf};
 use std::process::Command;
+
+const ENV: &str = "/usr/bin/env";
+const ID: &str = "/usr/bin/id";
+const CHOWN: &str = "/usr/bin/chown";
+const PKEXEC: &str = "/usr/bin/pkexec";
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Backend {
@@ -27,8 +34,8 @@ pub fn backend() -> Backend {
 
 pub fn program() -> &'static str {
     match backend() {
-        Backend::Sudo => "sudo",
-        Backend::Pkexec => "pkexec",
+        Backend::Sudo => "/usr/bin/sudo",
+        Backend::Pkexec => PKEXEC,
     }
 }
 
@@ -38,6 +45,9 @@ pub fn is_privileged() -> bool {
     std::env::var("OMNISCIENT_PRIVILEGED")
         .map(|value| value == "1")
         .unwrap_or(false)
+        && command_output(ID, &["-u"])
+            .map(|uid| uid == "0")
+            .unwrap_or(false)
 }
 
 pub fn args<'a>(command: &'a str, args: &[&'a str]) -> Vec<&'a str> {
@@ -60,12 +70,21 @@ pub fn reexec_graphical() -> Result<bool> {
     let executable = std::env::current_exe().context("locating omniscient executable")?;
     let report_dir = crate::paths::report_root();
     let snapshot_path = crate::snapshot::path();
-    let uid = command_output("id", &["-u"])?;
-    let gid = command_output("id", &["-g"])?;
+    let uid = command_output(ID, &["-u"])?;
+    let gid = command_output(ID, &["-g"])?;
+    validate_owner_id(&uid, "uid")?;
+    validate_owner_id(&gid, "gid")?;
+    validate_executable(&executable, &uid)?;
+    validate_user_path(&report_dir, &uid, "report directory")?;
+    if let Some(parent) = snapshot_path.parent() {
+        validate_user_path(parent, &uid, "snapshot directory")?;
+    } else {
+        bail!("snapshot path has no parent directory");
+    }
 
-    let mut command = Command::new(program());
+    let mut command = Command::new(PKEXEC);
     command
-        .arg("/usr/bin/env")
+        .arg(ENV)
         .arg("OMNISCIENT_PRIVILEGED=1")
         .arg("OMNISCIENT_AUTH=pkexec")
         .arg(format!("OMNISCIENT_REPORT_DIR={}", report_dir.display()))
@@ -97,11 +116,15 @@ pub fn restore_user_files() -> Result<()> {
 
     let uid = std::env::var("OMNISCIENT_OWNER_UID").context("missing audit owner uid")?;
     let gid = std::env::var("OMNISCIENT_OWNER_GID").context("missing audit owner gid")?;
+    validate_owner_id(&uid, "uid")?;
+    validate_owner_id(&gid, "gid")?;
     let owner = format!("{uid}:{gid}");
     let report_dir = crate::paths::report_root();
+    validate_user_path(&report_dir, &uid, "report directory")?;
     chown_tree(&report_dir, &owner)?;
     let snapshot_path = crate::snapshot::path();
     if let Some(parent) = snapshot_path.parent() {
+        validate_user_path(parent, &uid, "snapshot directory")?;
         chown_path(parent, &owner)?;
     }
     chown_path(&snapshot_path, &owner)?;
@@ -119,12 +142,96 @@ fn command_output(program: &str, args: &[&str]) -> Result<String> {
     Ok(String::from_utf8_lossy(&output.stdout).trim().to_string())
 }
 
+fn validate_owner_id(value: &str, name: &str) -> Result<()> {
+    let parsed = value
+        .parse::<u32>()
+        .with_context(|| format!("invalid audit owner {name}"))?;
+    if name == "uid" && parsed == 0 {
+        bail!("refusing to restore files to root ownership");
+    }
+    Ok(())
+}
+
+/// Verify that a privileged child may only write below an existing path owned
+/// by the invoking user.  Root-owned system ancestors are allowed, but once
+/// the user-owned portion begins, every existing component must remain user
+/// owned and no symlink or parent traversal is accepted.
+fn validate_user_path(path: &Path, uid: &str, label: &str) -> Result<()> {
+    if !path.is_absolute() {
+        bail!("{label} must be absolute");
+    }
+
+    let expected_uid = uid
+        .parse::<u32>()
+        .with_context(|| format!("invalid owner uid for {label}"))?;
+    let mut current = PathBuf::from("/");
+    let mut user_owned_boundary = false;
+
+    for component in path.components() {
+        match component {
+            Component::RootDir => {}
+            Component::Normal(part) => {
+                current.push(part);
+                match fs::symlink_metadata(&current) {
+                    Ok(metadata) => {
+                        if metadata.file_type().is_symlink() {
+                            bail!("{label} contains a symlink: {}", current.display());
+                        }
+                        if user_owned_boundary && metadata.uid() != expected_uid {
+                            bail!(
+                                "{label} leaves the invoking user's ownership at {}",
+                                current.display()
+                            );
+                        }
+                        if metadata.uid() == expected_uid {
+                            user_owned_boundary = true;
+                        }
+                    }
+                    Err(error) if error.kind() == std::io::ErrorKind::NotFound => break,
+                    Err(error) => {
+                        return Err(error).with_context(|| {
+                            format!("checking ownership of {}", current.display())
+                        })
+                    }
+                }
+            }
+            Component::CurDir | Component::ParentDir => {
+                bail!("{label} contains an unsafe path component");
+            }
+            Component::Prefix(_) => bail!("{label} has an unsupported path prefix"),
+        }
+    }
+
+    if !user_owned_boundary {
+        bail!("{label} has no existing component owned by the invoking user");
+    }
+    Ok(())
+}
+
+fn validate_executable(path: &Path, uid: &str) -> Result<()> {
+    let metadata = fs::symlink_metadata(path)
+        .with_context(|| format!("checking audit executable {}", path.display()))?;
+    let expected_uid = uid
+        .parse::<u32>()
+        .with_context(|| "invalid audit executable owner uid")?;
+    if metadata.file_type().is_symlink() {
+        bail!("audit executable may not be a symlink: {}", path.display());
+    }
+    if !metadata.is_file() || metadata.uid() != expected_uid {
+        bail!("audit executable must be a regular file owned by the invoking user");
+    }
+    if metadata.mode() & 0o022 != 0 {
+        bail!("audit executable is writable by group or other users");
+    }
+    Ok(())
+}
+
 fn chown_tree(path: &Path, owner: &str) -> Result<()> {
     if !path.exists() {
         return Ok(());
     }
-    Command::new("chown")
-        .args(["-R", owner, &path.to_string_lossy()])
+    Command::new(CHOWN)
+        .args(["--no-dereference", "-R", owner, &path.to_string_lossy()])
         .status()
         .with_context(|| format!("restoring ownership of {}", path.display()))?
         .success()
@@ -136,7 +243,8 @@ fn chown_path(path: &Path, owner: &str) -> Result<()> {
     if !path.exists() {
         return Ok(());
     }
-    Command::new("chown")
+    Command::new(CHOWN)
+        .arg("--no-dereference")
         .arg(owner)
         .arg(path)
         .status()

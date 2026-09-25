@@ -6,6 +6,12 @@ description = "CYBERDECK full system audit tool"
 license = "MIT"
 repository = "https://github.com/cybercore-tech/omniscient"
 
+[profile.release]
+strip = "symbols"
+lto = "thin"
+codegen-units = 1
+panic = "abort"
+
 [lib]
 name = "omniscient"
 path = "src/lib.rs"
@@ -15,17 +21,9 @@ name = "omniscient"
 path = "src/main.rs"
 
 [dependencies]
-anyhow = "=1.0.75"
-chrono = { version = "=0.4.31", default-features = false, features = ["clock"] }
-crossterm = "=0.27.0"
-ratatui = "=0.26.3"
-serde = { version = "=1.0.193", features = ["derive"] }
-serde_json = "=1.0.108"
-cybercore = { version = "0.1.0", git = "https://github.com/cybercore-tech/cybercore.git", tag = "v0.1.0" }
-# Transitive pins to keep this buildable on an older cargo (this repo
-# doesn't use these directly, but their newer releases require a
-# cargo/edition version this toolchain doesn't have).
-zeroize = "=1.7.0"
-getrandom = "=0.2.15"
-fastrand = "=2.0.2"
-rustix = "=0.38.44"
+anyhow = "=1.0.103"
+chrono = { version = "=0.4.45", default-features = false, features = ["clock"] }
+crossterm = "=0.29.0"
+ratatui = "=0.30.2"
+serde = { version = "=1.0.229", features = ["derive"] }
+serde_json = "=1.0.151"

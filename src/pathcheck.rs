@@ -6,11 +6,22 @@ use std::path::{Path, PathBuf};
 /// needs a yes/no answer, not the resolved path, so a small local
 /// search avoids pulling in an extra dependency for one boolean check.
 pub fn exists(cmd: &str) -> bool {
-    find(cmd).is_some()
+    resolve(cmd).is_some()
 }
 
-fn find(cmd: &str) -> Option<PathBuf> {
-    let path_var = std::env::var_os("PATH")?;
+/// Resolve only executable files from a fixed, system-owned search path.
+/// This keeps privileged probes from inheriting a user-writable PATH entry.
+pub fn resolve(cmd: &str) -> Option<PathBuf> {
+    if cmd.contains('/') {
+        let path = PathBuf::from(cmd);
+        return is_executable(&path).then_some(path);
+    }
+
+    let path_var = if crate::elevation::is_privileged() {
+        "/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin".to_string()
+    } else {
+        std::env::var("PATH").ok()?
+    };
     for dir in std::env::split_paths(&path_var) {
         let candidate = dir.join(cmd);
         if is_executable(&candidate) {

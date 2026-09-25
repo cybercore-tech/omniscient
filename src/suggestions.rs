@@ -152,7 +152,7 @@ fn missing_tool_suggestion(tool: &str) -> Option<Suggestion> {
         severity: "attention".to_string(),
         title: format!("Install missing tool: {tool}"),
         detail: format!("Omniscient could not find `{tool}`. Install its Arch package to improve audit coverage."),
-        command: format!("sudo pacman -S --needed {package_name}"),
+        command: format!("sudo /usr/bin/pacman -S --needed {package_name}"),
         man_url: format!("https://man.archlinux.org/man/{tool}.1.en"),
         docs_url: "https://wiki.archlinux.org/title/Pacman".to_string(),
         auto_fix,

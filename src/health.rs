@@ -48,47 +48,54 @@ where
     }
 
     // Real signal #1: failed systemd units.
-    if let Ok(out) = Command::new("systemctl")
-        .args(["list-units", "--failed", "--no-legend"])
-        .output()
-    {
-        let failed = String::from_utf8_lossy(&out.stdout);
-        let count = failed.lines().filter(|l| !l.trim().is_empty()).count();
-        if count > 0 {
-            score -= (count as i32) * 10;
-            notes.push(format!("{count} failed systemd unit(s)"));
+    if let Some(systemctl) = crate::pathcheck::resolve("systemctl") {
+        if let Ok(out) = Command::new(systemctl)
+            .args(["list-units", "--failed", "--no-legend"])
+            .output()
+        {
+            let failed = String::from_utf8_lossy(&out.stdout);
+            let count = failed.lines().filter(|l| !l.trim().is_empty()).count();
+            if count > 0 {
+                score -= (count as i32) * 10;
+                notes.push(format!("{count} failed systemd unit(s)"));
+            }
         }
     }
 
     // Real signal #2: SMART health status on any disk that reports it.
     if smart_requested && crate::pathcheck::exists("smartctl") {
-        if let Ok(out) = Command::new("lsblk")
-            .args(["-dn", "-o", "NAME,TYPE"])
-            .output()
-        {
-            let disks = String::from_utf8_lossy(&out.stdout);
-            for line in disks.lines() {
-                let mut fields = line.split_whitespace();
-                let Some(disk) = fields.next() else {
-                    continue;
-                };
-                if fields.next() != Some("disk") {
-                    continue;
-                }
-                let dev = format!("/dev/{disk}");
-                let elevated_args = crate::elevation::args("smartctl", &["-H", &dev]);
-                let smart = if crate::elevation::is_privileged() {
-                    Command::new("smartctl").args(["-H", &dev]).output()
-                } else {
-                    Command::new(crate::elevation::program())
-                        .args(elevated_args)
-                        .output()
-                };
-                if let Ok(smart) = smart {
-                    let text = String::from_utf8_lossy(&smart.stdout);
-                    if text.contains("FAILED") {
-                        score -= 25;
-                        notes.push(format!("SMART health check FAILED on {dev}"));
+        if let Some(lsblk) = crate::pathcheck::resolve("lsblk") {
+            if let Ok(out) = Command::new(lsblk)
+                .args(["-dn", "-o", "NAME,TYPE"])
+                .output()
+            {
+                let disks = String::from_utf8_lossy(&out.stdout);
+                for line in disks.lines() {
+                    let mut fields = line.split_whitespace();
+                    let Some(disk) = fields.next() else {
+                        continue;
+                    };
+                    if fields.next() != Some("disk") {
+                        continue;
+                    }
+                    let dev = format!("/dev/{disk}");
+                    let smartctl = crate::pathcheck::resolve("smartctl")
+                        .expect("smartctl was checked before the health scan");
+                    let smartctl = smartctl.to_string_lossy().into_owned();
+                    let elevated_args = crate::elevation::args(&smartctl, &["-H", &dev]);
+                    let smart = if crate::elevation::is_privileged() {
+                        Command::new(&smartctl).args(["-H", &dev]).output()
+                    } else {
+                        Command::new(crate::elevation::program())
+                            .args(elevated_args)
+                            .output()
+                    };
+                    if let Ok(smart) = smart {
+                        let text = String::from_utf8_lossy(&smart.stdout);
+                        if text.contains("FAILED") {
+                            score -= 25;
+                            notes.push(format!("SMART health check FAILED on {dev}"));
+                        }
                     }
                 }
             }

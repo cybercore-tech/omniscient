@@ -18,6 +18,7 @@ quality_gates() {
     run_gate cargo test --locked
     run_gate cargo clippy --locked --all-targets -- -D warnings
     run_gate bash -n install.sh scripts/gate.sh scripts/package.sh
+    run_gate bash scripts/security-gate.sh
     run_gate git diff --check
 }
 

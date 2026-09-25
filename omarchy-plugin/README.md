@@ -21,6 +21,15 @@ and renders the resulting report index and Markdown content in place.
   is absent or invalid. Privileged modules use the configured graphical
   `pkexec` backend when launched from the HUD.
 
+## Security model
+
+The plugin runs inside Omarchy's unsandboxed shell process. Read the
+[repository security model](../SECURITY.md) before enabling it. The HUD uses
+direct process arguments (no shell interpolation), requests one explicit
+Polkit authorization for a scan, and exposes only the allowlisted package
+repair actions documented there. It does not install services, edit sudoers,
+or contact a network service at runtime.
+
 ## Local validation
 
 Validate this folder with:

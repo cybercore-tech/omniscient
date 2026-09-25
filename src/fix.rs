@@ -7,6 +7,9 @@ use std::io::Write;
 use std::process::Command;
 
 pub fn run(fix_id: &str) -> Result<()> {
+    // Validate the complete request before asking for credentials.  An
+    // unsupported UI or IPC value must never trigger a needless root prompt.
+    validate_fix(fix_id)?;
     if elevation::reexec_graphical()? {
         return Ok(());
     }
@@ -22,9 +25,8 @@ fn run_fix(fix_id: &str) -> Result<()> {
     let Some(tool) = fix_id.strip_prefix("install-tool:") else {
         bail!("unsupported fix request: {fix_id}");
     };
-    let Some(package) = crate::suggestions::package_for_tool(tool) else {
-        bail!("no allowlisted package mapping for tool: {tool}");
-    };
+    let package = crate::suggestions::package_for_tool(tool)
+        .with_context(|| format!("no allowlisted package mapping for tool: {tool}"))?;
 
     let timestamp = Local::now().format("%Y-%m-%d_%H-%M-%S").to_string();
     let fixes_dir = paths::report_root().join("fixes");
@@ -34,13 +36,13 @@ fn run_fix(fix_id: &str) -> Result<()> {
     let command_line = format!("pacman -S --needed --noconfirm {package}");
 
     let output = if elevation::is_privileged() {
-        Command::new("pacman")
+        Command::new("/usr/bin/pacman")
             .args(["-S", "--needed", "--noconfirm", package])
             .output()
             .context("running pacman")?
     } else {
         Command::new(elevation::program())
-            .args(["pacman", "-S", "--needed", "--noconfirm", package])
+            .args(["/usr/bin/pacman", "-S", "--needed", "--noconfirm", package])
             .output()
             .context("running authenticated pacman")?
     };
@@ -73,4 +75,35 @@ fn run_fix(fix_id: &str) -> Result<()> {
         bail!("fix failed with {status}; see {}", report_path.display());
     }
     Ok(())
+}
+
+fn validate_fix(fix_id: &str) -> Result<()> {
+    let Some(tool) = fix_id.strip_prefix("install-tool:") else {
+        bail!("unsupported fix request: {fix_id}");
+    };
+    if tool.is_empty()
+        || tool.contains('/')
+        || !tool.bytes().all(|byte| {
+            byte.is_ascii_lowercase() || byte.is_ascii_digit() || byte == b'-' || byte == b'_'
+        })
+    {
+        bail!("invalid tool name in fix request: {tool}");
+    }
+    crate::suggestions::package_for_tool(tool)
+        .with_context(|| format!("no allowlisted package mapping for tool: {tool}"))?;
+    Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::validate_fix;
+
+    #[test]
+    fn only_allowlisted_install_ids_are_valid() {
+        assert!(validate_fix("install-tool:lshw").is_ok());
+        assert!(validate_fix("install-tool:smartctl").is_ok());
+        assert!(validate_fix("install-tool:../../pacman").is_err());
+        assert!(validate_fix("run-command:rm -rf /").is_err());
+        assert!(validate_fix("install-tool:unknown-tool").is_err());
+    }
 }

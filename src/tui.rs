@@ -418,7 +418,7 @@ fn suspend_for_sudo(terminal: &mut Terminal<CrosstermBackend<Stdout>>) -> Result
     )
     .context("leaving the dashboard for sudo")?;
 
-    let result = Command::new("sudo").arg("-v").status();
+    let result = Command::new("/usr/bin/sudo").arg("-v").status();
 
     execute!(
         terminal.backend_mut(),
@@ -612,7 +612,7 @@ fn publish_snapshot(app: &App) {
 }
 
 fn draw(frame: &mut Frame, app: &App, palette: UiPalette) {
-    let area = frame.size();
+    let area = frame.area();
     frame.render_widget(
         Block::default().style(Style::default().bg(palette.bg)),
         area,

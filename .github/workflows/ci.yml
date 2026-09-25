@@ -17,15 +17,39 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
 
       - name: Install stable Rust
-        uses: dtolnay/rust-toolchain@stable
-        with:
-          components: rustfmt, clippy
-
-      - name: Cache Cargo build artifacts
-        uses: Swatinem/rust-cache@v2
+        run: rustup toolchain install stable --profile minimal
 
       - name: Run release gates
         run: ./scripts/gate.sh release
+
+  security:
+    name: Security gates
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Checkout
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+
+      - name: Install stable Rust
+        run: rustup toolchain install stable --profile minimal
+
+      - name: Install audit tools
+        run: |
+          cargo install --locked cargo-audit
+          cargo install --locked cargo-deny
+
+      - name: Static security gate
+        run: bash scripts/security-gate.sh
+
+      - name: RustSec audit
+        run: cargo audit --deny warnings
+
+      - name: Dependency policy
+        run: cargo deny check advisories licenses bans sources

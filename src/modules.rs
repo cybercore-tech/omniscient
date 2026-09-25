@@ -33,10 +33,10 @@ pub trait AuditModule {
 /// or wasn't found) rather than silently swallowing errors the way
 /// `2>/dev/null` did in the fish version.
 fn capture(cmd: &str, args: &[&str]) -> String {
-    if !crate::pathcheck::exists(cmd) {
+    let Some(executable) = crate::pathcheck::resolve(cmd) else {
         return format!("_{cmd}: not installed, skipped_\n");
-    }
-    match Command::new(cmd).args(args).output() {
+    };
+    match Command::new(executable).args(args).output() {
         Ok(out) => {
             let mut s = String::from_utf8_lossy(&out.stdout).into_owned();
             if !out.status.success() {
@@ -46,6 +46,9 @@ fn capture(cmd: &str, args: &[&str]) -> String {
                     s.push_str(&format!("```\n{}\n```\n", err.trim()));
                 }
             }
+            if s.trim().is_empty() {
+                s.push_str(&format!("_{cmd} returned no data._\n"));
+            }
             s
         }
         Err(e) => format!("_{cmd}: failed to run ({e})_\n"),
@@ -53,13 +56,14 @@ fn capture(cmd: &str, args: &[&str]) -> String {
 }
 
 fn capture_privileged(command: &str, args: &[&str]) -> String {
-    if !crate::pathcheck::exists(command) {
+    let Some(executable) = crate::pathcheck::resolve(command) else {
         return format!("_{command}: not installed, skipped_\n");
-    }
+    };
+    let executable = executable.to_string_lossy().into_owned();
     if crate::elevation::is_privileged() {
-        return capture(command, args);
+        return capture(&executable, args);
     }
-    let elevated_args = crate::elevation::args(command, args);
+    let elevated_args = crate::elevation::args(&executable, args);
     capture(crate::elevation::program(), &elevated_args)
 }
 
@@ -354,16 +358,37 @@ impl AuditModule for Bluetooth {
         &["bluetoothctl"]
     }
     fn run(&self, dir: &Path) -> Result<()> {
+        let bluetooth = bluetooth_report();
         write_report(
             dir,
             "bluetooth.md",
             "BLUETOOTH",
-            &[(
-                "bluetoothctl devices",
-                capture("bluetoothctl", &["devices"]),
-            )],
+            &[("bluetoothctl devices", bluetooth)],
         )
     }
+}
+
+fn bluetooth_report() -> String {
+    if !crate::pathcheck::exists("bluetoothctl") {
+        return "_bluetoothctl: not installed, skipped_\n".to_string();
+    }
+
+    // bluetoothctl can abort inside libdbus when no system bus is available.
+    // A service-state check turns that environment condition into a useful
+    // report instead of allowing a child crash/core dump to look like an
+    // empty successful scan.
+    let service = crate::pathcheck::resolve("systemctl").and_then(|systemctl| {
+        Command::new(systemctl)
+            .args(["is-active", "--quiet", "bluetooth"])
+            .status()
+            .ok()
+    });
+    if !matches!(service, Some(status) if status.success()) {
+        return "_Bluetooth service is inactive or unavailable; no device scan was attempted._\n"
+            .to_string();
+    }
+
+    capture("bluetoothctl", &["--timeout", "5", "devices"])
 }
 
 pub struct ConnectedDevices;
@@ -428,6 +453,7 @@ pub fn all_modules() -> Vec<Box<dyn AuditModule>> {
 mod tests {
     use super::*;
     use std::collections::HashSet;
+    use std::fs;
 
     #[test]
     fn module_registry_has_unique_slugs_and_labels() {
@@ -474,5 +500,19 @@ mod tests {
             optional,
             HashSet::from(["flatpak", "snap", "hyprctl", "wlr-randr", "xrandr"])
         );
+    }
+
+    #[test]
+    fn bluetooth_report_is_explicit_when_service_is_unavailable() {
+        let directory =
+            std::env::temp_dir().join(format!("omniscient-bluetooth-test-{}", std::process::id()));
+        fs::create_dir_all(&directory).expect("create test report directory");
+        Bluetooth.run(&directory).expect("write bluetooth report");
+        let report =
+            fs::read_to_string(directory.join("bluetooth.md")).expect("read bluetooth report");
+        assert!(report.contains("# 📡 BLUETOOTH"));
+        assert!(report.contains("## bluetoothctl devices"));
+        assert!(!report.trim().is_empty());
+        fs::remove_dir_all(directory).expect("remove test report directory");
     }
 }

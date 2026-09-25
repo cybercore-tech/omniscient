@@ -5,7 +5,7 @@
   "version": "0.1.0",
   "author": "Cybercore Tech",
   "license": "MIT",
-  "description": "A focused Omnarchy HUD surface for Omniscient system audit health, module state, and report paths.",
+  "description": "A focused Omarchy HUD surface for Omniscient system audit health, module state, and report paths.",
   "kinds": [
     "panel",
     "bar-widget"
