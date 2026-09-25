@@ -61,6 +61,8 @@ Item {
     if (value === "urgent") return "#ff667d"
     if (value === "warning") return "#ff8f70"
     if (value === "attention") return "#ffb454"
+    if (value === "watch") return "#ffb454"
+    if (value === "healthy") return "#c8e967"
     return "#52e8ff"
   }
 

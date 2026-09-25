@@ -71,12 +71,27 @@ fn write_report<S: AsRef<str>>(
 ) -> Result<()> {
     let path = dir.join(filename);
     let mut f = File::create(&path).with_context(|| format!("creating {}", path.display()))?;
-    writeln!(f, "# {title}\n")?;
+    writeln!(f, "# {} {title}\n", report_emoji(title))?;
     for (heading, body) in sections {
         writeln!(f, "## {}\n", heading.as_ref())?;
         writeln!(f, "```\n{}\n```\n", body.trim_end())?;
     }
     Ok(())
+}
+
+fn report_emoji(title: &str) -> &'static str {
+    match title {
+        "HARDWARE CORE" => "🖥️",
+        "STORAGE MATRIX" => "💾",
+        "BTRFS SNAPSHOTS" => "📸",
+        "NETWORK" => "🌐",
+        "CONTAINERS" => "📦",
+        "SERVICES" => "⚙️",
+        "LOGS" => "📜",
+        "BLUETOOTH" => "📡",
+        "DEVICES" => "🔌",
+        _ => "🛰️",
+    }
 }
 
 pub struct Hardware;

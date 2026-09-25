@@ -34,8 +34,13 @@ pub fn write_report(
 ) -> Result<PathBuf> {
     let path = dir.join("SUGGESTIONS.md");
     let mut file = File::create(&path).with_context(|| format!("creating {}", path.display()))?;
-    writeln!(file, "# Omniscient Fix Suggestions — {timestamp}\n")?;
-    writeln!(file, "**Health score:** {}/100\n", health.score)?;
+    writeln!(file, "# 🧰 Omniscient Fix Suggestions — {timestamp}\n")?;
+    writeln!(
+        file,
+        "**Health score:** {} {}/100\n",
+        health_emoji(health.score),
+        health.score
+    )?;
 
     if suggestions.is_empty() {
         writeln!(
@@ -47,7 +52,13 @@ pub fn write_report(
 
     writeln!(file, "Review each action before applying it.\n")?;
     for suggestion in suggestions {
-        writeln!(file, "## [{}] {}\n", suggestion.severity, suggestion.title)?;
+        writeln!(
+            file,
+            "## {} [{}] {}\n",
+            severity_emoji(&suggestion.severity),
+            suggestion.severity,
+            suggestion.title
+        )?;
         writeln!(file, "{}\n", suggestion.detail)?;
         writeln!(file, "- Command: `{}`", suggestion.command)?;
         writeln!(file, "- [Manual page]({})", suggestion.man_url)?;
@@ -64,6 +75,27 @@ pub fn write_report(
     }
 
     Ok(path)
+}
+
+fn severity_emoji(severity: &str) -> &'static str {
+    match severity {
+        "urgent" => "🚨",
+        "warning" => "⚠️",
+        "attention" => "🟠",
+        _ => "ℹ️",
+    }
+}
+
+fn health_emoji(score: i32) -> &'static str {
+    if score < 40 {
+        "🚨"
+    } else if score < 70 {
+        "⚠️"
+    } else if score < 85 {
+        "🟠"
+    } else {
+        "✅"
+    }
 }
 
 fn suggestion_for_note(note: &str) -> Option<Suggestion> {

@@ -23,6 +23,7 @@ Item {
   property string pendingFixId: ""
   property string fixMessage: ""
   property bool confirmingFix: false
+  property bool fullReportView: false
 
   function open(payloadJson) {
     root.opened = true
@@ -85,6 +86,83 @@ Item {
     root.selectedReport = path
     root.reportText = "LOADING REPORT..."
     reportReader.running = true
+  }
+
+  function escapeHtml(value) {
+    return String(value)
+      .replace(/&/g, "&amp;")
+      .replace(/</g, "&lt;")
+      .replace(/>/g, "&gt;")
+      .replace(/\"/g, "&quot;")
+  }
+
+  function inlineMarkdown(value) {
+    var html = escapeHtml(value)
+    html = html.replace(/\[([^\]]+)\]\(([^)]+)\)/g, "<a href='$2'>$1</a>")
+    html = html.replace(/\*\*(.*?)\*\*/g, "<b>$1</b>")
+    html = html.replace(/`([^`]+)`/g, "<font color='#ffb454'><b>$1</b></font>")
+    return html
+  }
+
+  function markdownToRichText(value) {
+    var lines = String(value || "").split("\n")
+    var html = []
+    var inCode = false
+    for (var i = 0; i < lines.length; i++) {
+      var line = lines[i]
+      if (line.indexOf("```") === 0) {
+        inCode = !inCode
+        html.push("<font color='#a56bff'><b>▌ CODE BLOCK</b></font><br>")
+      } else if (inCode) {
+        html.push("<font color='#7dd3fc'>" + escapeHtml(line) + "</font><br>")
+      } else if (line.indexOf("### ") === 0) {
+        html.push("<font color='#ffb454'><b>" + inlineMarkdown(line.substring(4)) + "</b></font><br>")
+      } else if (line.indexOf("## ") === 0) {
+        html.push("<font color='#52e8ff'><b>" + inlineMarkdown(line.substring(3)) + "</b></font><br>")
+      } else if (line.indexOf("# ") === 0) {
+        html.push("<font color='#ff4f9a'><b>" + inlineMarkdown(line.substring(2)) + "</b></font><br>")
+      } else if (line.indexOf("- ") === 0) {
+        html.push("<font color='#c8e967'>◆</font> " + inlineMarkdown(line.substring(2)) + "<br>")
+      } else if (line.indexOf("> ") === 0) {
+        html.push("<font color='#8290a4'>│ " + inlineMarkdown(line.substring(2)) + "</font><br>")
+      } else if (line.trim().length === 0) {
+        html.push("<br>")
+      } else {
+        html.push(inlineMarkdown(line) + "<br>")
+      }
+    }
+    return html.join("")
+  }
+
+  function reportSeverity(path) {
+    var value = String(path).toLowerCase()
+    if (value.indexOf("suggestions") >= 0) {
+      var highest = "healthy"
+      for (var i = 0; i < SnapshotReader.suggestions.length; i++) {
+        var severity = String(SnapshotReader.suggestions[i].severity || "attention")
+        if (severity === "urgent") return "urgent"
+        if (severity === "warning") highest = "warning"
+        else if (severity === "attention" && highest === "healthy") highest = "attention"
+      }
+      return highest
+    }
+    return SnapshotReader.healthLabel(SnapshotReader.healthScore).toLowerCase()
+  }
+
+  function reportIcon(path) {
+    var value = String(path).toLowerCase()
+    if (value.indexOf("hardware") >= 0) return "🖥️"
+    if (value.indexOf("storage") >= 0) return "💾"
+    if (value.indexOf("snapshot") >= 0) return "📸"
+    if (value.indexOf("network") >= 0) return "🌐"
+    if (value.indexOf("container") >= 0) return "📦"
+    if (value.indexOf("service") >= 0) return "⚙️"
+    if (value.indexOf("log") >= 0) return "📜"
+    if (value.indexOf("bluetooth") >= 0) return "📡"
+    if (value.indexOf("device") >= 0) return "🔌"
+    if (value.indexOf("suggestion") >= 0) return "🧰"
+    if (value.indexOf("summary") >= 0) return "🛰️"
+    return "📄"
   }
 
   Process {
@@ -456,7 +534,7 @@ Item {
               anchors.fill: parent
               anchors.margins: 10
               spacing: 6
-              Text { text: "REPORT INDEX"; color: "#52e8ff"; font.family: "monospace"; font.pixelSize: root.fontSection; font.bold: true }
+              Text { text: "REPORT INDEX / URGENCY"; color: "#52e8ff"; font.family: "monospace"; font.pixelSize: root.fontSection; font.bold: true }
               ListView {
                 Layout.fillWidth: true
                 Layout.fillHeight: true
@@ -464,13 +542,13 @@ Item {
                 model: SnapshotReader.reports
                 delegate: Rectangle {
                   width: ListView.view.width
-                  height: 28
+                  height: 32
                   color: root.selectedReport === String(modelData) ? "#1a2940" : "transparent"
                   Text {
                     anchors.fill: parent
                     anchors.margins: 6
-                    text: String(modelData).split("/").pop()
-                    color: root.selectedReport === String(modelData) ? "#c8e967" : "#8290a4"
+                    text: root.reportIcon(String(modelData)) + "  " + String(modelData).split("/").pop()
+                    color: SnapshotReader.severityColor(root.reportSeverity(String(modelData)))
                     font.family: "monospace"
                     font.pixelSize: root.fontMicro
                     elide: Text.ElideMiddle
@@ -503,13 +581,25 @@ Item {
               anchors.fill: parent
               anchors.margins: 10
               spacing: 6
-              Text {
-                text: root.selectedReport.length ? "REPORT VIEW / " + root.selectedReport.split("/").pop() : "REPORT VIEW"
-                color: "#ff4f9a"
-                font.family: "monospace"
-                font.pixelSize: root.fontSection
-                elide: Text.ElideMiddle
+              RowLayout {
                 Layout.fillWidth: true
+                Text {
+                  text: root.selectedReport.length ? "REPORT VIEW / " + root.selectedReport.split("/").pop() : "REPORT VIEW"
+                  color: "#ff4f9a"
+                  font.family: "monospace"
+                  font.pixelSize: root.fontSection
+                  elide: Text.ElideMiddle
+                  Layout.fillWidth: true
+                }
+                Rectangle {
+                  Layout.preferredWidth: 112
+                  Layout.preferredHeight: 30
+                  color: "#121c2b"
+                  border.width: 1
+                  border.color: "#52e8ff"
+                  Text { anchors.centerIn: parent; text: "FULL VIEW"; color: "#52e8ff"; font.family: "monospace"; font.pixelSize: root.fontMicro; font.bold: true }
+                  MouseArea { anchors.fill: parent; cursorShape: Qt.PointingHandCursor; onClicked: root.fullReportView = true }
+                }
               }
               Flickable {
                 Layout.fillWidth: true
@@ -520,11 +610,13 @@ Item {
                 Text {
                   id: reportBody
                   width: parent.width
-                  text: root.reportText.length ? root.reportText : "SELECT A REPORT TO VIEW IT HERE"
+                  text: root.markdownToRichText(root.reportText.length ? root.reportText : "SELECT A REPORT TO VIEW IT HERE")
                   color: "#c8d2e8"
                   font.family: "monospace"
                   font.pixelSize: root.fontBody
                   wrapMode: Text.Wrap
+                  textFormat: Text.RichText
+                  onLinkActivated: function(link) { Qt.openUrlExternally(link) }
                 }
               }
             }
@@ -607,6 +699,64 @@ Item {
                   Text { anchors.centerIn: parent; text: "AUTHORIZE / APPLY"; color: "#ffb454"; font.family: "monospace"; font.pixelSize: root.fontSmall; font.bold: true }
                   MouseArea { anchors.fill: parent; cursorShape: Qt.PointingHandCursor; onClicked: root.applyFix() }
                 }
+              }
+            }
+          }
+        }
+
+        Rectangle {
+          visible: root.fullReportView && root.selectedReport.length > 0
+          anchors.fill: parent
+          z: 15
+          color: "#080b12"
+          border.width: 1
+          border.color: "#52e8ff"
+
+          ColumnLayout {
+            anchors.fill: parent
+            anchors.margins: 22
+            spacing: 12
+
+            RowLayout {
+              Layout.fillWidth: true
+              Text {
+                text: root.reportIcon(root.selectedReport) + "  FULL REPORT / " + root.selectedReport.split("/").pop()
+                color: "#52e8ff"
+                font.family: "monospace"
+                font.pixelSize: root.fontTitle
+                font.bold: true
+                elide: Text.ElideMiddle
+                Layout.fillWidth: true
+              }
+              Rectangle {
+                Layout.preferredWidth: 112
+                Layout.preferredHeight: 34
+                color: "#121c2b"
+                border.width: 1
+                border.color: "#ff4f9a"
+                Text { anchors.centerIn: parent; text: "BACK"; color: "#ff4f9a"; font.family: "monospace"; font.pixelSize: root.fontSmall; font.bold: true }
+                MouseArea { anchors.fill: parent; cursorShape: Qt.PointingHandCursor; onClicked: root.fullReportView = false }
+              }
+            }
+
+            Rectangle { Layout.fillWidth: true; height: 1; color: "#263445" }
+
+            Flickable {
+              Layout.fillWidth: true
+              Layout.fillHeight: true
+              clip: true
+              contentWidth: width
+              contentHeight: fullReportBody.paintedHeight
+              Text {
+                id: fullReportBody
+                width: parent.width
+                text: root.markdownToRichText(root.reportText)
+                color: "#c8d2e8"
+                font.family: "monospace"
+                font.pixelSize: root.fontBody
+                wrapMode: Text.Wrap
+                textFormat: Text.RichText
+                onLinkActivated: function(link) { Qt.openUrlExternally(link) }
               }
             }
           }

@@ -16,8 +16,13 @@ pub fn write_summary(
     let path = dir.join("SUMMARY.md");
     let mut f = File::create(&path).with_context(|| format!("creating {}", path.display()))?;
 
-    writeln!(f, "# Omniscient Audit — {timestamp}\n")?;
-    writeln!(f, "**Health score:** {}/100\n", health.score)?;
+    writeln!(f, "# 🛰️ Omniscient Audit — {timestamp}\n")?;
+    writeln!(
+        f,
+        "**Health score:** {} {}/100\n",
+        health_emoji(health.score),
+        health.score
+    )?;
 
     if !health.notes.is_empty() {
         writeln!(f, "## Findings\n")?;
@@ -33,4 +38,16 @@ pub fn write_summary(
     }
 
     Ok(())
+}
+
+fn health_emoji(score: i32) -> &'static str {
+    if score < 40 {
+        "🚨"
+    } else if score < 70 {
+        "⚠️"
+    } else if score < 85 {
+        "🟠"
+    } else {
+        "✅"
+    }
 }

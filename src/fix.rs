@@ -54,7 +54,7 @@ fn run_fix(fix_id: &str) -> Result<()> {
     };
     let mut report = File::create(&report_path)
         .with_context(|| format!("creating {}", report_path.display()))?;
-    writeln!(report, "# Omniscient Fix Report — {timestamp}\n")?;
+    writeln!(report, "# 🛠️ Omniscient Fix Report — {timestamp}\n")?;
     writeln!(report, "**Status:** {status}")?;
     writeln!(report, "**Fix:** Install `{tool}` via package `{package}`")?;
     writeln!(report, "**Command:** `{command_line}`\n")?;
