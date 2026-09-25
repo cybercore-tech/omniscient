@@ -3,8 +3,9 @@ import QtQuick
 import Quickshell
 import Quickshell.Io
 
-QtObject {
+Item {
   id: root
+  visible: false
 
   readonly property string runtimePath: {
     var runtime = Quickshell.env("XDG_RUNTIME_DIR") || ""
@@ -36,7 +37,8 @@ QtObject {
     return "#52e8ff"
   }
 
-  property Process reader: Process {
+  Process {
+    id: reader
     command: ["sh", "-c", root.readScript, "omniscient-snapshot", root.runtimePath, root.fallbackPath]
     stdout: StdioCollector {
       waitForEnd: true
