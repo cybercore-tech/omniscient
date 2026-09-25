@@ -102,10 +102,9 @@ Item {
   }
 
   function allowHelp() {
-    var value = root.pendingHelpUrl
     root.confirmingHelp = false
-    if (value.length > 0)
-      Qt.openUrlExternally(value)
+    if (root.pendingHelpUrl.length > 0 && !helpLauncher.running)
+      helpLauncher.running = true
   }
 
   function fixReportPath() {
@@ -297,6 +296,13 @@ Item {
         root.reportText = "REPORT UNAVAILABLE\n\nThe saved report path no longer exists or cannot be read:\n" + root.selectedReport
       }
     }
+  }
+
+  Process {
+    id: helpLauncher
+    command: root.pendingHelpUrl.length
+      ? ["/usr/bin/xdg-open", root.pendingHelpUrl]
+      : ["/usr/bin/true"]
   }
 
   PanelWindow {
@@ -564,7 +570,7 @@ Item {
                       color: "#52e8ff"
                       font.family: "monospace"
                       font.pixelSize: root.fontMicro
-                      onLinkActivated: function(link) { Qt.openUrlExternally(link) }
+                      onLinkActivated: function(link) { root.requestHelp(link, "SUGGESTION REFERENCE") }
                     }
                   }
 
@@ -905,7 +911,7 @@ Item {
                 font.pixelSize: root.fontBody
                 wrapMode: Text.Wrap
                 textFormat: Text.RichText
-                onLinkActivated: function(link) { Qt.openUrlExternally(link) }
+                onLinkActivated: function(link) { root.requestHelp(link, "REPORT REFERENCE") }
               }
             }
           }
