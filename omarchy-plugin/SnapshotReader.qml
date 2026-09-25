@@ -36,8 +36,7 @@ QtObject {
     return "#52e8ff"
   }
 
-  Process {
-    id: reader
+  property Process reader: Process {
     command: ["sh", "-c", root.readScript, "omniscient-snapshot", root.runtimePath, root.fallbackPath]
     stdout: StdioCollector {
       waitForEnd: true
