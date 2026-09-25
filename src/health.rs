@@ -54,10 +54,14 @@ where
             .output()
         {
             let failed = String::from_utf8_lossy(&out.stdout);
-            let count = failed.lines().filter(|l| !l.trim().is_empty()).count();
-            if count > 0 {
-                score -= (count as i32) * 10;
-                notes.push(format!("{count} failed systemd unit(s)"));
+            let units = failed
+                .lines()
+                .filter_map(|line| line.split_whitespace().next())
+                .filter(|unit| !unit.is_empty())
+                .collect::<Vec<_>>();
+            if !units.is_empty() {
+                score -= (units.len() as i32) * 10;
+                notes.push(format!("failed systemd units: {}", units.join(", ")));
             }
         }
     }

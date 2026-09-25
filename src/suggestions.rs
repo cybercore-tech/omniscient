@@ -11,10 +11,13 @@ pub struct Suggestion {
     pub severity: String,
     pub title: String,
     pub detail: String,
+    pub explanation: String,
     pub command: String,
+    pub manual_steps: Vec<String>,
     pub man_url: String,
     pub docs_url: String,
     pub auto_fix: bool,
+    pub auto_fix_reason: String,
     pub requires_auth: bool,
 }
 
@@ -60,7 +63,12 @@ pub fn write_report(
             suggestion.title
         )?;
         writeln!(file, "{}\n", suggestion.detail)?;
+        writeln!(file, "### Explanation\n{}\n", suggestion.explanation)?;
         writeln!(file, "- Command: `{}`", suggestion.command)?;
+        writeln!(file, "### Manual recovery\n")?;
+        for step in &suggestion.manual_steps {
+            writeln!(file, "- `{step}`")?;
+        }
         writeln!(file, "- [Manual page]({})", suggestion.man_url)?;
         writeln!(file, "- [Documentation]({})", suggestion.docs_url)?;
         writeln!(
@@ -72,6 +80,10 @@ pub fn write_report(
                 "manual review required"
             }
         )?;
+        if !suggestion.auto_fix_reason.is_empty() {
+            writeln!(file, "- Automatic fix note: {}", suggestion.auto_fix_reason)?;
+        }
+        writeln!(file)?;
     }
 
     Ok(path)
@@ -103,17 +115,27 @@ fn suggestion_for_note(note: &str) -> Option<Suggestion> {
         return missing_tool_suggestion(tool.trim());
     }
 
-    if note.contains("failed systemd unit") {
+    if let Some(units) = note.strip_prefix("failed systemd units: ") {
+        let units = units.trim();
+        let unit_args = units.replace(", ", " ");
         return Some(Suggestion {
             id: "inspect-failed-services".to_string(),
             severity: "warning".to_string(),
-            title: "Inspect failed systemd services".to_string(),
-            detail: note.to_string(),
+            title: format!("Inspect failed systemd service(s): {units}"),
+            detail: format!("{} failed unit(s) require investigation: {units}.", units.split(',').count()),
+            explanation: "A failed systemd unit stopped or could not start. The cause may be a bad configuration, a missing dependency, a permissions problem, a device failure, or a recent update. Omniscient will not restart or reset it automatically because doing so can hide the original failure and may interrupt a service that other applications depend on.".to_string(),
             command: "systemctl --failed --no-pager".to_string(),
+            manual_steps: vec![
+                "systemctl --failed --no-pager".to_string(),
+                format!("systemctl status {unit_args} --no-pager -l"),
+                format!("journalctl -u {unit_args} -b --no-pager"),
+                format!("sudo systemctl restart {unit_args}"),
+            ],
             man_url: "https://man.archlinux.org/man/systemctl.1.en".to_string(),
             docs_url: "https://www.freedesktop.org/software/systemd/man/latest/systemctl.html"
                 .to_string(),
             auto_fix: false,
+            auto_fix_reason: "No safe automatic repair is available. Review the unit status and boot journal before restarting it.".to_string(),
             requires_auth: false,
         });
     }
@@ -125,10 +147,18 @@ fn suggestion_for_note(note: &str) -> Option<Suggestion> {
             title: format!("Investigate SMART failure on {device}"),
             detail: "Back up important data and inspect the drive before attempting repairs."
                 .to_string(),
+            explanation: "SMART is reporting a drive health failure. This can indicate imminent media failure or an unrecoverable hardware condition. Do not attempt filesystem repair or overwrite the device until important data is backed up and the drive's diagnostic output has been reviewed.".to_string(),
             command: format!("sudo smartctl -a {device}"),
+            manual_steps: vec![
+                format!("sudo smartctl -a {device}"),
+                format!("sudo smartctl -t short {device}"),
+                "sudo smartctl -l selftest <device>".to_string(),
+                "Back up important data before filesystem repair or replacement.".to_string(),
+            ],
             man_url: "https://man.archlinux.org/man/smartctl.8.en".to_string(),
             docs_url: "https://www.smartmontools.org/wiki/FAQ".to_string(),
             auto_fix: false,
+            auto_fix_reason: "No automatic repair is offered for failing hardware. Replacement and recovery decisions require human review.".to_string(),
             requires_auth: true,
         });
     }
@@ -152,12 +182,47 @@ fn missing_tool_suggestion(tool: &str) -> Option<Suggestion> {
         severity: "attention".to_string(),
         title: format!("Install missing tool: {tool}"),
         detail: format!("Omniscient could not find `{tool}`. Install its Arch package to improve audit coverage."),
+        explanation: format!("The `{tool}` executable is not available on PATH, so one part of the audit could not collect its normal evidence. Installing the allowlisted package restores that audit coverage; it does not change the underlying system configuration beyond installing the package."),
         command: format!("sudo /usr/bin/pacman -S --needed {package_name}"),
-        man_url: format!("https://man.archlinux.org/man/{tool}.1.en"),
-        docs_url: "https://wiki.archlinux.org/title/Pacman".to_string(),
+        manual_steps: vec![
+            format!("command -v {tool} || pacman -Ss {package_name}"),
+            format!("sudo /usr/bin/pacman -S --needed {package_name}"),
+            format!("{tool} --help"),
+        ],
+        man_url: man_url_for_tool(tool),
+        docs_url: docs_url_for_tool(tool),
         auto_fix,
+        auto_fix_reason: if auto_fix {
+            format!("The allowlisted package `{package_name}` can be installed after explicit authorization.")
+        } else {
+            "No allowlisted package mapping exists, so installation must be handled manually.".to_string()
+        },
         requires_auth: true,
     })
+}
+
+fn man_url_for_tool(tool: &str) -> String {
+    let section = match tool {
+        "smartctl" => "8",
+        _ => "1",
+    };
+    format!("https://man.archlinux.org/man/{tool}.{section}.en")
+}
+
+fn docs_url_for_tool(tool: &str) -> String {
+    match tool {
+        "bluetoothctl" => "https://man.archlinux.org/man/bluetoothctl.1.en".to_string(),
+        "btrfs" => "https://btrfs.readthedocs.io/en/latest/".to_string(),
+        "lshw" => "https://ezix.org/project/wiki/HardwareLiSter".to_string(),
+        "lsusb" => "https://man.archlinux.org/man/lsusb.8.en".to_string(),
+        "lspci" => "https://man.archlinux.org/man/lspci.8.en".to_string(),
+        "smartctl" => "https://www.smartmontools.org/wiki/FAQ".to_string(),
+        "systemctl" | "journalctl" => {
+            "https://www.freedesktop.org/software/systemd/man/latest/systemctl.html".to_string()
+        }
+        "ip" | "ss" => "https://wiki.archlinux.org/title/Network_configuration".to_string(),
+        _ => "https://wiki.archlinux.org/title/Pacman".to_string(),
+    }
 }
 
 pub fn package_for_tool(tool: &str) -> Option<&'static str> {

@@ -24,6 +24,9 @@ Item {
   property string pendingFixId: ""
   property string fixMessage: ""
   property bool confirmingFix: false
+  property bool confirmingHelp: false
+  property string pendingHelpUrl: ""
+  property string pendingHelpLabel: ""
   property bool fullReportView: false
   property bool fixCenterOpen: false
   property int selectedFixIndex: 0
@@ -61,6 +64,7 @@ Item {
   }
 
   function requestFix(id) {
+    root.confirmingHelp = false
     root.pendingFixId = id
     root.confirmingFix = true
   }
@@ -75,6 +79,7 @@ Item {
   function closeFixCenter() {
     root.fixCenterOpen = false
     root.confirmingFix = false
+    root.confirmingHelp = false
   }
 
   function selectedFix() {
@@ -83,9 +88,23 @@ Item {
     return SnapshotReader.suggestions[root.selectedFixIndex]
   }
 
-  function openFixHelp(url) {
+  function requestHelp(url, label) {
     var value = String(url || "")
-    if (value.indexOf("https://") === 0 || value.indexOf("http://") === 0)
+    if (value.indexOf("https://") !== 0 && value.indexOf("http://") !== 0)
+      return
+    root.pendingHelpUrl = value
+    root.pendingHelpLabel = String(label || "EXTERNAL REFERENCE")
+    root.confirmingHelp = true
+  }
+
+  function openFixHelp(url, label) {
+    root.requestHelp(url, label)
+  }
+
+  function allowHelp() {
+    var value = root.pendingHelpUrl
+    root.confirmingHelp = false
+    if (value.length > 0)
       Qt.openUrlExternally(value)
   }
 
@@ -683,7 +702,7 @@ Item {
                   font.pixelSize: root.fontBody
                   wrapMode: Text.Wrap
                   textFormat: Text.RichText
-                  onLinkActivated: function(link) { Qt.openUrlExternally(link) }
+                  onLinkActivated: function(link) { root.requestHelp(link, "REPORT REFERENCE") }
                 }
               }
             }
@@ -739,7 +758,7 @@ Item {
               }
               Text {
                 Layout.fillWidth: true
-                text: "This will run an allowlisted package repair with elevated permissions:\n" + root.pendingFixId + "\n\nReview the generated fix report after completion."
+                text: "This will run an allowlisted package repair with elevated permissions.\n\nFinding: " + String(root.selectedFix().title || root.pendingFixId) + "\nCommand: " + String(root.selectedFix().command || "not available") + "\n\nAllow only if you reviewed the explanation and proposed command. A fix report will be written after completion."
                 color: "#c8d2e8"
                 font.family: "monospace"
                 font.pixelSize: root.fontBody
@@ -765,6 +784,69 @@ Item {
                   border.color: "#ffb454"
                   Text { anchors.centerIn: parent; text: "AUTHORIZE / APPLY"; color: "#ffb454"; font.family: "monospace"; font.pixelSize: root.fontSmall; font.bold: true }
                   MouseArea { anchors.fill: parent; cursorShape: Qt.PointingHandCursor; onClicked: root.applyFix() }
+                }
+              }
+            }
+          }
+        }
+
+        Rectangle {
+          visible: root.confirmingHelp
+          anchors.fill: parent
+          z: 45
+          color: "#d9080b12"
+          border.width: 1
+          border.color: "#52e8ff"
+
+          MouseArea { anchors.fill: parent }
+
+          Rectangle {
+            width: Math.min(600, parent.width - 48)
+            height: 230
+            anchors.centerIn: parent
+            color: "#111824"
+            border.width: 1
+            border.color: "#52e8ff"
+
+            ColumnLayout {
+              anchors.fill: parent
+              anchors.margins: 20
+              spacing: 10
+              Text {
+                text: "ALLOW EXTERNAL REFERENCE"
+                color: "#52e8ff"
+                font.family: "monospace"
+                font.pixelSize: root.fontTitle
+                font.bold: true
+              }
+              Text {
+                Layout.fillWidth: true
+                text: "Open the " + root.pendingHelpLabel + " in your browser?\n\nThis is read-only guidance. It will not run a repair or grant permissions.\n\n" + root.pendingHelpUrl
+                color: "#c8d2e8"
+                font.family: "monospace"
+                font.pixelSize: root.fontBody
+                wrapMode: Text.Wrap
+              }
+              RowLayout {
+                Layout.fillWidth: true
+                Item { Layout.fillWidth: true }
+                Rectangle {
+                  Layout.preferredWidth: 110
+                  Layout.preferredHeight: 36
+                  color: "#1d2634"
+                  border.width: 1
+                  border.color: "#8290a4"
+                  Text { anchors.centerIn: parent; text: "DENY / CLOSE"; color: "#c8d2e8"; font.family: "monospace"; font.pixelSize: root.fontSmall }
+                  MouseArea { anchors.fill: parent; cursorShape: Qt.PointingHandCursor; onClicked: root.confirmingHelp = false }
+                }
+                Rectangle {
+                  Layout.preferredWidth: 145
+                  Layout.preferredHeight: 36
+                  color: "#12262f"
+                  border.width: 1
+                  border.color: "#52e8ff"
+                  Text { anchors.centerIn: parent; text: "ALLOW / OPEN"; color: "#52e8ff"; font.family: "monospace"; font.pixelSize: root.fontSmall; font.bold: true }
+                  MouseArea { anchors.fill: parent; cursorShape: Qt.PointingHandCursor; onClicked: root.allowHelp() }
                 }
               }
             }
@@ -945,10 +1027,18 @@ Item {
                 border.width: 1
                 border.color: SnapshotReader.suggestions.length ? SnapshotReader.severityColor(String(root.selectedFix().severity || "attention")) : "#263445"
 
-                ColumnLayout {
+                Flickable {
+                  id: fixDetailScroll
                   anchors.fill: parent
                   anchors.margins: 16
-                  spacing: 10
+                  clip: true
+                  contentWidth: width
+                  contentHeight: fixDetailColumn.implicitHeight
+
+                  ColumnLayout {
+                    id: fixDetailColumn
+                    width: fixDetailScroll.width
+                    spacing: 10
 
                   Text {
                     Layout.fillWidth: true
@@ -967,7 +1057,50 @@ Item {
                     font.pixelSize: root.fontBody
                     wrapMode: Text.Wrap
                   }
-                  Text { visible: SnapshotReader.suggestions.length > 0; text: "PROPOSED COMMAND"; color: "#52e8ff"; font.family: "monospace"; font.pixelSize: root.fontSection; font.bold: true }
+                  Text {
+                    visible: SnapshotReader.suggestions.length > 0
+                    Layout.fillWidth: true
+                    text: "EXPLANATION / IMPACT"
+                    color: "#52e8ff"
+                    font.family: "monospace"
+                    font.pixelSize: root.fontSection
+                    font.bold: true
+                  }
+                  Text {
+                    visible: SnapshotReader.suggestions.length > 0
+                    Layout.fillWidth: true
+                    text: String(root.selectedFix().explanation || "No additional explanation was recorded for this finding.")
+                    color: "#c8d2e8"
+                    font.family: "monospace"
+                    font.pixelSize: root.fontSmall
+                    wrapMode: Text.Wrap
+                  }
+                  Text {
+                    visible: SnapshotReader.suggestions.length > 0
+                    Layout.fillWidth: true
+                    text: "MANUAL CHECKLIST / REVIEW EACH STEP"
+                    color: "#ffb454"
+                    font.family: "monospace"
+                    font.pixelSize: root.fontSection
+                    font.bold: true
+                  }
+                  ColumnLayout {
+                    visible: SnapshotReader.suggestions.length > 0
+                    Layout.fillWidth: true
+                    spacing: 3
+                    Repeater {
+                      model: SnapshotReader.suggestions.length > 0 ? (root.selectedFix().manual_steps || []) : []
+                      delegate: Text {
+                        Layout.fillWidth: true
+                        text: "◆ " + String(modelData || "")
+                        color: "#c8d2e8"
+                        font.family: "monospace"
+                        font.pixelSize: root.fontSmall
+                        wrapMode: Text.Wrap
+                      }
+                    }
+                  }
+                  Text { visible: SnapshotReader.suggestions.length > 0; text: "PROPOSED COMMAND / INSPECTION"; color: "#52e8ff"; font.family: "monospace"; font.pixelSize: root.fontSection; font.bold: true }
                   Rectangle {
                     visible: SnapshotReader.suggestions.length > 0
                     Layout.fillWidth: true
@@ -976,6 +1109,15 @@ Item {
                     border.width: 1
                     border.color: "#263445"
                     Text { anchors.fill: parent; anchors.margins: 10; text: String(root.selectedFix().command || "NO AUTOMATIC COMMAND"); color: "#ffb454"; font.family: "monospace"; font.pixelSize: root.fontBody; wrapMode: Text.Wrap; verticalAlignment: Text.AlignVCenter }
+                  }
+                  Text {
+                    visible: SnapshotReader.suggestions.length > 0
+                    Layout.fillWidth: true
+                    text: (root.selectedFix().auto_fix ? "AUTO REPAIR: AVAILABLE AFTER AUTHORIZATION / " : "AUTO REPAIR: NOT AVAILABLE / ") + String(root.selectedFix().auto_fix_reason || "Manual review is required.")
+                    color: root.selectedFix().auto_fix ? "#c8e967" : "#ff8f70"
+                    font.family: "monospace"
+                    font.pixelSize: root.fontSmall
+                    wrapMode: Text.Wrap
                   }
                   RowLayout {
                     Layout.fillWidth: true
@@ -986,8 +1128,8 @@ Item {
                       color: "#121c2b"
                       border.width: 1
                       border.color: "#52e8ff"
-                      Text { anchors.centerIn: parent; text: "MAN PAGE"; color: "#52e8ff"; font.family: "monospace"; font.pixelSize: root.fontMicro; font.bold: true }
-                      MouseArea { anchors.fill: parent; cursorShape: Qt.PointingHandCursor; onClicked: root.openFixHelp(root.selectedFix().man_url) }
+                      Text { anchors.centerIn: parent; text: "OPEN MAN PAGE"; color: "#52e8ff"; font.family: "monospace"; font.pixelSize: root.fontMicro; font.bold: true }
+                      MouseArea { anchors.fill: parent; cursorShape: Qt.PointingHandCursor; onClicked: root.openFixHelp(root.selectedFix().man_url, "MAN PAGE") }
                     }
                     Rectangle {
                       Layout.preferredWidth: 124
@@ -995,8 +1137,8 @@ Item {
                       color: "#121c2b"
                       border.width: 1
                       border.color: "#52e8ff"
-                      Text { anchors.centerIn: parent; text: "DOCUMENTATION"; color: "#52e8ff"; font.family: "monospace"; font.pixelSize: root.fontMicro; font.bold: true }
-                      MouseArea { anchors.fill: parent; cursorShape: Qt.PointingHandCursor; onClicked: root.openFixHelp(root.selectedFix().docs_url) }
+                      Text { anchors.centerIn: parent; text: "OPEN DOCUMENTATION"; color: "#52e8ff"; font.family: "monospace"; font.pixelSize: root.fontMicro; font.bold: true }
+                      MouseArea { anchors.fill: parent; cursorShape: Qt.PointingHandCursor; onClicked: root.openFixHelp(root.selectedFix().docs_url, "DOCUMENTATION") }
                     }
                     Rectangle {
                       Layout.preferredWidth: 152
@@ -1008,7 +1150,6 @@ Item {
                       MouseArea { anchors.fill: parent; cursorShape: Qt.PointingHandCursor; onClicked: root.openSuggestionsReport() }
                     }
                   }
-                  Item { Layout.fillHeight: true }
                   Text { visible: root.fixMessage.length > 0; Layout.fillWidth: true; text: root.fixMessage; color: root.fixMessage.indexOf("FAILED") >= 0 ? "#ff667d" : "#c8e967"; font.family: "monospace"; font.pixelSize: root.fontMicro; elide: Text.ElideMiddle }
                   RowLayout {
                     Layout.fillWidth: true
@@ -1019,8 +1160,8 @@ Item {
                       color: "#182438"
                       border.width: 1
                       border.color: "#8290a4"
-                      Text { anchors.centerIn: parent; text: "MANUAL REPAIR / OPEN GUIDANCE"; color: "#c8d2e8"; font.family: "monospace"; font.pixelSize: root.fontSmall; font.bold: true }
-                      MouseArea { anchors.fill: parent; cursorShape: Qt.PointingHandCursor; onClicked: root.openFixHelp(root.selectedFix().docs_url) }
+                      Text { anchors.centerIn: parent; text: "MANUAL REPAIR / OPEN GUIDE"; color: "#c8d2e8"; font.family: "monospace"; font.pixelSize: root.fontSmall; font.bold: true }
+                      MouseArea { anchors.fill: parent; cursorShape: Qt.PointingHandCursor; onClicked: root.openFixHelp(root.selectedFix().docs_url, "MANUAL REPAIR GUIDE") }
                     }
                     Rectangle {
                       visible: SnapshotReader.suggestions.length > 0 && Boolean(root.selectedFix().auto_fix)
@@ -1042,6 +1183,7 @@ Item {
                     border.color: "#c8e967"
                     Text { anchors.centerIn: parent; text: "VIEW FIX RESULT"; color: "#c8e967"; font.family: "monospace"; font.pixelSize: root.fontMicro; font.bold: true }
                     MouseArea { anchors.fill: parent; cursorShape: Qt.PointingHandCursor; onClicked: root.openFixReport() }
+                  }
                   }
                 }
               }
