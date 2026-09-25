@@ -14,6 +14,12 @@ use std::process::Command;
 pub trait AuditModule {
     fn name(&self) -> &'static str;
     fn slug(&self) -> &'static str;
+    /// The Markdown filename emitted inside this module's report directory.
+    /// Most modules use their slug, but a legacy report such as Storage Matrix
+    /// has a user-facing filename that differs from its directory slug.
+    fn report_filename(&self) -> String {
+        format!("{}.md", self.slug())
+    }
     fn menu_label(&self) -> &'static str;
     /// Tools this module relies on — used for the capability matrix
     /// and the health score, not just duplicated as a magic list.
@@ -137,6 +143,9 @@ impl AuditModule for Disks {
     }
     fn slug(&self) -> &'static str {
         "disks"
+    }
+    fn report_filename(&self) -> String {
+        "storage.md".to_string()
     }
     fn menu_label(&self) -> &'static str {
         "💾 Storage Matrix"
@@ -388,7 +397,16 @@ fn bluetooth_report() -> String {
             .to_string();
     }
 
-    capture("bluetoothctl", &["--timeout", "5", "devices"])
+    let controller = capture("bluetoothctl", &["--timeout", "5", "show"]);
+    let devices = capture("bluetoothctl", &["--timeout", "5", "devices"]);
+    let devices = if devices.contains("bluetoothctl returned no data") {
+        "No paired or known devices were returned. The controller is available; use a deliberate scan when you want to discover nearby devices.".to_string()
+    } else {
+        devices
+    };
+    format!(
+        "CONTROLLER STATUS / bluetoothctl show\n{controller}\n\nKNOWN DEVICES / bluetoothctl devices\n{devices}"
+    )
 }
 
 pub struct ConnectedDevices;

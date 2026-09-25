@@ -482,8 +482,13 @@ fn worker(selected: Vec<usize>, full: bool, tx: Sender<WorkerMessage>) {
             .and_then(|_| module.run(&dir).map_err(std::io::Error::other));
         match result {
             Ok(()) => {
-                let relative = format!("{}-{}/{}.md", module.slug(), timestamp, module.slug());
-                let absolute = dir.join(format!("{}.md", module.slug()));
+                let relative = format!(
+                    "{}-{}/{}",
+                    module.slug(),
+                    timestamp,
+                    module.report_filename()
+                );
+                let absolute = dir.join(module.report_filename());
                 reports.push((module.name().to_string(), relative.clone()));
                 let _ = tx.send(WorkerMessage::Completed {
                     index,

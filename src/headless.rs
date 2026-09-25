@@ -78,7 +78,7 @@ fn run_audit() -> Result<()> {
             .and_then(|_| module.run(&dir).map_err(std::io::Error::other));
         match result {
             Ok(()) => {
-                let report_path = dir.join(format!("{}.md", module.slug()));
+                let report_path = dir.join(module.report_filename());
                 reports.push(report_path.display().to_string());
                 states[index] = "complete".to_string();
                 publish(

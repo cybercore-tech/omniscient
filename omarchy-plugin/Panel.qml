@@ -154,11 +154,17 @@ Item {
 
   function openReport(path) {
     root.fixCenterOpen = false
-    if (!isSafeReportPath(path)) {
+    var value = String(path || "")
+    // Storage Matrix historically emitted storage.md under the disks
+    // directory while older snapshots indexed it as disks.md. Keep those
+    // snapshots readable after the backend contract is corrected.
+    if (value.endsWith("/disks.md"))
+      value = value.substring(0, value.length - "/disks.md".length) + "/storage.md"
+    if (!isSafeReportPath(value)) {
       root.reportText = "REPORT REJECTED / UNSAFE LOCAL PATH"
       return
     }
-    root.selectedReport = path
+    root.selectedReport = value
     root.reportText = "LOADING REPORT..."
     reportReader.running = true
   }
