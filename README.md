@@ -1,6 +1,6 @@
 # ⟦◈⟧ OMNISCIENT // CYBERCORE SYSTEM AUDIT
 
-[![CI](https://github.com/darkstardevx/omniscient/actions/workflows/ci.yml/badge.svg)](https://github.com/darkstardevx/omniscient/actions/workflows/ci.yml)
+[![CI](https://github.com/cybercore-tech/omniscient/actions/workflows/ci.yml/badge.svg)](https://github.com/cybercore-tech/omniscient/actions/workflows/ci.yml)
 
 `omniscient` is the full-system audit console for the Cybercore family: a
 Rust-powered, full-screen Ratatui dashboard that turns system inspection into
@@ -32,7 +32,7 @@ and capability matrix in one view.*
 Clone and install:
 
 ```bash
-git clone https://github.com/darkstardevx/omniscient.git
+git clone https://github.com/cybercore-tech/omniscient.git
 cd omniscient
 ./install.sh
 ```
