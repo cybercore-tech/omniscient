@@ -244,5 +244,87 @@ button.addEventListener('click', () => { menu.hidden = !menu.hidden; button.setA
 document.addEventListener('click', event => { if (!event.target.closest('.theme-picker')) { menu.hidden = true; button.setAttribute('aria-expanded', 'false'); } });
 let saved = 'neon-night'; try { saved = localStorage.getItem('omniscient-theme') || saved; } catch (e) {} applyTheme(saved);
 </script>
++<script>
+/* Canonical Cybercore theme matrix: 72 source themes plus the master mix. */
+(() => {
+  const FAMILIES = {
+    "cybercore-tech": ["cybercore-tech"],
+    cyberdyne: ["cyberdyne-assassin","cyberdyne-factory","cyberdyne-hunter","cyberdyne-infiltrator","cyberdyne-judgment","cyberdyne-logic","cyberdyne-machine","cyberdyne-neural","cyberdyne-skynet","cyberdyne-steel","cyberdyne-system","cyberdyne-t800"],
+    cyberpunk: ["cyberpunk-alley","cyberpunk-chrome","cyberpunk-edge","cyberpunk-glitch","cyberpunk-grid","cyberpunk-hacker","cyberpunk-mainframe","cyberpunk-neon","cyberpunk-nexus","cyberpunk-overdrive","cyberpunk-spire","cyberpunk-wire"],
+    default: ["catppuccin-mocha","cyberpunk-2077","cyberpunk-neon-classic","cyberpunk-sub-grid-zero","dracula","gruvbox-dark","kanagawa","neon-night","nord","synthwave-84","synthwave-grid-runner","tokyo-night"],
+    dystopian: ["dystopian-ash","dystopian-fallout","dystopian-neon-rot","dystopian-quarantine","dystopian-ration","dystopian-rebel","dystopian-ruin","dystopian-sector","dystopian-slum","dystopian-smog","dystopian-ward","dystopian-wasteland"],
+    neosynth: ["neosynth-beam","neosynth-core","neosynth-drive","neosynth-flare","neosynth-flux","neosynth-glow","neosynth-laser-grid","neosynth-nova","neosynth-plasma","neosynth-pulse","neosynth-spark","neosynth-wave"],
+    synthwave: ["synthwave-arcade","synthwave-cassette","synthwave-cruise","synthwave-delorean","synthwave-horizon","synthwave-miami","synthwave-nightrun","synthwave-outrun","synthwave-palm","synthwave-retro","synthwave-sunset","synthwave-vinyl"]
+  };
+  const LABELS = {
+    "cybercore-tech": "CYBERCORE TECH / MASTER MIX",
+    cyberdyne: "CYBERDYNE",
+    cyberpunk: "CYBERPUNK",
+    default: "DEFAULT / CLASSICS",
+    dystopian: "DYSTOPIAN",
+    neosynth: "NEOSYNTH",
+    synthwave: "SYNTHWAVE"
+  };
+  const themeMenu = document.getElementById("themeMenu");
+  const oldButton = document.getElementById("themeButton");
+  const themeButton = oldButton.cloneNode(false);
+  oldButton.replaceWith(themeButton);
+  themeMenu.innerHTML = "";
+  const familyFor = name => Object.keys(FAMILIES).find(family => FAMILIES[family].includes(name));
+  const display = name => name.replaceAll("-", " ").toUpperCase();
+  const allNames = Object.values(FAMILIES).flat();
+
+  Object.entries(FAMILIES).forEach(([family, names]) => {
+    const heading = document.createElement("div");
+    heading.className = "theme-group-label";
+    heading.textContent = LABELS[family];
+    themeMenu.appendChild(heading);
+    names.forEach(name => {
+      const option = document.createElement("button");
+      option.type = "button";
+      option.className = "theme-option";
+      option.dataset.value = name;
+      option.dataset.family = family;
+      option.setAttribute("role", "option");
+      option.textContent = display(name);
+      option.addEventListener("click", () => applyCanonical(name));
+      themeMenu.appendChild(option);
+    });
+  });
+
+  function buttonLabel(name) {
+    themeButton.innerHTML = '<i class="swatch"></i><span>' + display(name) + '</span><span>⌄</span>';
+  }
+  async function applyCanonical(name) {
+    if (!allNames.includes(name)) name = "cybercore-tech";
+    const family = familyFor(name);
+    buttonLabel(name);
+    themeMenu.hidden = true;
+    themeButton.setAttribute("aria-expanded", "false");
+    document.querySelectorAll(".theme-option").forEach(option => option.setAttribute("aria-selected", String(option.dataset.value === name)));
+    try {
+      const response = await fetch("https://cybercore-tech.github.io/data/themes/" + family + "/" + name + ".json");
+      if (!response.ok) throw new Error("palette " + response.status);
+      const palette = await response.json();
+      const map = {bg:"--bg",white:"--fg",acid_green:"--acid",hot_pink:"--pink",purple:"--purple",cyan:"--cyan",orange:"--orange",red:"--red",panel:"--panel",line:"--line",muted:"--muted"};
+      Object.entries(map).forEach(([key, variable]) => {
+        if (palette[key]) document.documentElement.style.setProperty(variable, "#" + palette[key]);
+      });
+      document.documentElement.dataset.theme = name;
+      try { localStorage.setItem("omniscient-theme-v2", name); } catch (e) {}
+    } catch (error) {
+      console.warn("Cybercore theme unavailable:", error);
+    }
+  }
+
+  themeButton.addEventListener("click", () => {
+    const opening = themeMenu.hidden;
+    themeMenu.hidden = !opening;
+    themeButton.setAttribute("aria-expanded", String(opening));
+  });
+  const saved = localStorage.getItem("omniscient-theme-v2") || localStorage.getItem("omniscient-theme") || "cybercore-tech";
+  applyCanonical(allNames.includes(saved) ? saved : "cybercore-tech");
+})();
+</script>
 </body>
 </html>
