@@ -174,6 +174,21 @@ For a selected-module scan, reports are written directly beneath the same
 Omniscient report root and the generated `SUMMARY.md` links to each result.
 Command failures and unavailable tools remain visible in the Markdown output.
 
+### HUD state snapshot
+
+While the dashboard is open, Omniscient publishes an atomic, read-only JSON
+snapshot for local surfaces such as an Omarchy HUD:
+
+```text
+$XDG_RUNTIME_DIR/omniscient/snapshot.json
+```
+
+If `XDG_RUNTIME_DIR` is unavailable, the snapshot falls back to
+`~/.local/state/omniscient/snapshot.json`. Set `OMNISCIENT_SNAPSHOT_PATH` to
+override the location for an integration or test. The snapshot is versioned
+with `schema_version: 1` and reports the audit state, health score, module
+states, summary path, and any fatal error without exposing command output.
+
 ## ⟦⬡⟧ PROJECT MAP // DEVELOPMENT
 
 ```text

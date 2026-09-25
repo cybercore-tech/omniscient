@@ -4,6 +4,7 @@ use crate::modules;
 use crate::pathcheck;
 use crate::paths;
 use crate::report;
+use crate::snapshot;
 use anyhow::{Context, Result};
 use chrono::Local;
 use crossterm::{
@@ -256,6 +257,7 @@ pub fn run() -> Result<()> {
 fn run_loop(terminal: &mut Terminal<CrosstermBackend<Stdout>>, palette: UiPalette) -> Result<()> {
     let mut app = App::new();
     app.log("READY / select modules and press ENTER to begin");
+    publish_snapshot(&app);
     let mut receiver: Option<Receiver<WorkerMessage>> = None;
 
     loop {
@@ -263,8 +265,11 @@ fn run_loop(terminal: &mut Terminal<CrosstermBackend<Stdout>>, palette: UiPalett
 
         if let Some(rx) = &receiver {
             let messages: Vec<_> = rx.try_iter().collect();
-            for message in messages {
-                handle_message(&mut app, message);
+            if !messages.is_empty() {
+                for message in messages {
+                    handle_message(&mut app, message);
+                }
+                publish_snapshot(&app);
             }
             if app.finished || app.error.is_some() {
                 receiver = None;
@@ -273,7 +278,9 @@ fn run_loop(terminal: &mut Terminal<CrosstermBackend<Stdout>>, palette: UiPalett
 
         if event::poll(Duration::from_millis(100)).context("polling terminal input")? {
             if let Event::Key(key) = event::read().context("reading terminal input")? {
-                if handle_key(terminal, &mut app, key, &mut receiver)? {
+                let should_quit = handle_key(terminal, &mut app, key, &mut receiver)?;
+                publish_snapshot(&app);
+                if should_quit {
                     break;
                 }
             }
@@ -550,6 +557,54 @@ fn handle_message(app: &mut App, message: WorkerMessage) {
             app.log(format!("AUDIT COMPLETE / {summary_path}"));
         }
     }
+}
+
+fn publish_snapshot(app: &App) {
+    let state = if app.error.is_some() {
+        "error"
+    } else if app.running {
+        "running"
+    } else if app.finished {
+        "complete"
+    } else {
+        "ready"
+    };
+    let modules = app
+        .modules
+        .iter()
+        .map(|module| snapshot::ModuleSnapshot {
+            name: module.name.to_string(),
+            slug: module.slug.to_string(),
+            state: module.state.label().to_ascii_lowercase(),
+            selected: module.selected,
+            requires_sudo: module.requires_sudo,
+        })
+        .collect::<Vec<_>>();
+    let completed_count = app
+        .modules
+        .iter()
+        .filter(|module| module.selected && module.state == ModuleState::Complete)
+        .count();
+    let health = app.health.as_ref().map(|health| snapshot::HealthSnapshot {
+        score: health.score,
+        notes: health.notes.clone(),
+    });
+    let state = snapshot::AuditSnapshot {
+        schema_version: 1,
+        application: "omniscient",
+        state: state.to_string(),
+        updated_at: Local::now().to_rfc3339(),
+        host: hostname(),
+        selected_count: app.selected_count(),
+        completed_count,
+        health,
+        modules,
+        summary_path: app.summary_path.clone(),
+        error: app.error.clone(),
+    };
+    // Snapshot output is an integration surface, not a reason to interrupt
+    // an interactive audit if a HUD path becomes unavailable.
+    let _ = snapshot::write(&state);
 }
 
 fn draw(frame: &mut Frame, app: &App, palette: UiPalette) {

@@ -363,6 +363,8 @@ dependencies = [
  "getrandom",
  "ratatui",
  "rustix",
+ "serde",
+ "serde_json",
  "zeroize",
 ]
 

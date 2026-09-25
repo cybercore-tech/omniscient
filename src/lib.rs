@@ -5,4 +5,5 @@ pub mod modules;
 pub mod pathcheck;
 pub mod paths;
 pub mod report;
+pub mod snapshot;
 pub mod tui;
