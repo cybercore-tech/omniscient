@@ -44,11 +44,8 @@ BarWidget {
         anchors.centerIn: parent
         rotation: 45
         radius: 4
-        color: "transparent"
-        border.width: 2
-        border.color: SnapshotReader.state === "error"
-          ? Color.urgent
-          : SnapshotReader.state === "running" ? "#ff4f9a" : "#c8e967"
+        color: "#273142"
+        border.width: 0
       }
 
       Rectangle {
@@ -56,9 +53,9 @@ BarWidget {
         height: Style.space(5)
         anchors.centerIn: parent
         rotation: 45
-        color: "#111824"
-        border.width: 1
-        border.color: "#52e8ff"
+        color: SnapshotReader.state === "error"
+          ? Color.urgent
+          : SnapshotReader.state === "running" ? "#ff4f9a" : "#c8e967"
       }
 
       Rectangle {
@@ -67,7 +64,7 @@ BarWidget {
         anchors.centerIn: parent
         rotation: -45
         radius: 1
-        color: "#ff4f9a"
+        color: "#111824"
       }
 
       Rectangle {
@@ -76,7 +73,7 @@ BarWidget {
         anchors.top: outerDiamond.top
         anchors.right: outerDiamond.right
         radius: 2
-        color: "#52e8ff"
+        color: SnapshotReader.state === "error" ? Color.urgent : "#52e8ff"
       }
     }
   }
