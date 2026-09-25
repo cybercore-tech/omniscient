@@ -1,0 +1,24 @@
+{
+  "schemaVersion": 1,
+  "id": "io.github.cybercore-tech.omniscient",
+  "name": "Omniscient",
+  "version": "0.1.0",
+  "author": "Cybercore Tech",
+  "license": "MIT",
+  "description": "A focused Omnarchy HUD surface for Omniscient system audit health, module state, and report paths.",
+  "kinds": [
+    "panel",
+    "bar-widget"
+  ],
+  "entryPoints": {
+    "panel": "Panel.qml",
+    "barWidget": "BarWidget.qml"
+  },
+  "barWidget": {
+    "displayName": "Omniscient",
+    "description": "Shows audit health and opens the Omniscient HUD",
+    "category": "System",
+    "allowMultiple": false,
+    "defaultSection": "right"
+  }
+}

@@ -201,6 +201,7 @@ src/health.rs      health scoring from system signals
 src/paths.rs       XDG report-path resolution and per-user override
 src/report.rs      SUMMARY.md generation
 src/hud.rs         scanning animation helpers
+omarchy-plugin/    thin Quickshell HUD client for snapshot state
 src/pathcheck.rs   executable lookup without the which crate
 scripts/gate.sh    local and CI quality gates
 scripts/package.sh reproducible Linux release archive
