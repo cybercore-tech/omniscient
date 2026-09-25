@@ -77,10 +77,14 @@ where
                 }
                 let dev = format!("/dev/{disk}");
                 let elevated_args = crate::elevation::args("smartctl", &["-H", &dev]);
-                if let Ok(smart) = Command::new(crate::elevation::program())
-                    .args(elevated_args)
-                    .output()
-                {
+                let smart = if crate::elevation::is_privileged() {
+                    Command::new("smartctl").args(["-H", &dev]).output()
+                } else {
+                    Command::new(crate::elevation::program())
+                        .args(elevated_args)
+                        .output()
+                };
+                if let Ok(smart) = smart {
                     let text = String::from_utf8_lossy(&smart.stdout);
                     if text.contains("FAILED") {
                         score -= 25;

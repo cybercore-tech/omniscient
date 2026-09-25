@@ -1,3 +1,4 @@
+use crate::elevation;
 use crate::health::{self, HealthReport};
 use crate::modules;
 use crate::paths;
@@ -14,6 +15,18 @@ use std::path::Path;
 /// atomic snapshots after every meaningful state transition for the Omarchy
 /// HUD to render in place.
 pub fn run() -> Result<()> {
+    if elevation::reexec_graphical()? {
+        return Ok(());
+    }
+
+    let result = run_audit();
+    if elevation::is_privileged() {
+        elevation::restore_user_files()?;
+    }
+    result
+}
+
+fn run_audit() -> Result<()> {
     let modules = modules::all_modules();
     let selected = (0..modules.len()).collect::<Vec<_>>();
     let health = health::compute_selected(&modules, &selected);

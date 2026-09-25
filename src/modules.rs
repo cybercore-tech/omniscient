@@ -56,6 +56,9 @@ fn capture_privileged(command: &str, args: &[&str]) -> String {
     if !crate::pathcheck::exists(command) {
         return format!("_{command}: not installed, skipped_\n");
     }
+    if crate::elevation::is_privileged() {
+        return capture(command, args);
+    }
     let elevated_args = crate::elevation::args(command, args);
     capture(crate::elevation::program(), &elevated_args)
 }
