@@ -25,6 +25,8 @@ Item {
   property string fixMessage: ""
   property bool confirmingFix: false
   property bool fullReportView: false
+  property bool fixCenterOpen: false
+  property int selectedFixIndex: 0
 
   function open(payloadJson) {
     root.opened = true
@@ -63,6 +65,45 @@ Item {
     root.confirmingFix = true
   }
 
+  function openFixCenter() {
+    root.fullReportView = false
+    root.fixCenterOpen = true
+    if (SnapshotReader.suggestions.length > 0 && root.selectedFixIndex >= SnapshotReader.suggestions.length)
+      root.selectedFixIndex = 0
+  }
+
+  function closeFixCenter() {
+    root.fixCenterOpen = false
+    root.confirmingFix = false
+  }
+
+  function selectedFix() {
+    if (root.selectedFixIndex < 0 || root.selectedFixIndex >= SnapshotReader.suggestions.length)
+      return ({})
+    return SnapshotReader.suggestions[root.selectedFixIndex]
+  }
+
+  function openFixHelp(url) {
+    var value = String(url || "")
+    if (value.indexOf("https://") === 0 || value.indexOf("http://") === 0)
+      Qt.openUrlExternally(value)
+  }
+
+  function fixReportPath() {
+    var marker = "FIX REPORT / "
+    var value = String(root.fixMessage || "")
+    var index = value.indexOf(marker)
+    return index >= 0 ? value.substring(index + marker.length).trim() : ""
+  }
+
+  function openFixReport() {
+    var path = root.fixReportPath()
+    if (path.length > 0) {
+      root.fixCenterOpen = false
+      root.openReport(path)
+    }
+  }
+
   function applyFix() {
     if (!root.pendingFixId.length || fixRunner.running) return
     root.confirmingFix = false
@@ -71,8 +112,10 @@ Item {
   }
 
   function openSuggestionsReport() {
-    if (SnapshotReader.suggestionsPath.length)
+    if (SnapshotReader.suggestionsPath.length) {
+      root.fixCenterOpen = false
       root.openReport(SnapshotReader.suggestionsPath)
+    }
   }
 
   function runAudit() {
@@ -84,6 +127,7 @@ Item {
   }
 
   function openReport(path) {
+    root.fixCenterOpen = false
     if (!isSafeReportPath(path)) {
       root.reportText = "REPORT REJECTED / UNSAFE LOCAL PATH"
       return
@@ -125,7 +169,9 @@ Item {
       var line = lines[i]
       if (line.indexOf("```") === 0) {
         inCode = !inCode
-        html.push("<font color='#a56bff'><b>▌ CODE BLOCK</b></font><br>")
+        html.push(inCode
+          ? "<font color='#a56bff'><b>▌ CODE BLOCK</b></font><br>"
+          : "<font color='#a56bff'><b>▌ END CODE</b></font><br>")
       } else if (inCode) {
         html.push("<font color='#7dd3fc'>" + escapeHtml(line) + "</font><br>")
       } else if (line.indexOf("### ") === 0) {
@@ -229,9 +275,7 @@ Item {
     }
     onExited: function(exitCode) {
       if (exitCode !== 0) {
-        root.reportText = reportStderr.text.trim().length
-          ? reportStderr.text.trim()
-          : "REPORT COULD NOT BE READ"
+        root.reportText = "REPORT UNAVAILABLE\n\nThe saved report path no longer exists or cannot be read:\n" + root.selectedReport
       }
     }
   }
@@ -422,6 +466,16 @@ Item {
                 font.bold: true
               }
               Item { Layout.fillWidth: true }
+              Rectangle {
+                Layout.preferredWidth: 150
+                Layout.preferredHeight: 28
+                radius: 3
+                color: "#182438"
+                border.width: 1
+                border.color: "#ffb454"
+                Text { anchors.centerIn: parent; text: "OPEN FIX CENTER"; color: "#ffb454"; font.family: "monospace"; font.pixelSize: root.fontMicro; font.bold: true }
+                MouseArea { anchors.fill: parent; cursorShape: Qt.PointingHandCursor; onClicked: root.openFixCenter() }
+              }
               Text {
                 visible: SnapshotReader.suggestionsPath.length > 0
                 text: "VIEW SUGGESTIONS REPORT"
@@ -657,7 +711,7 @@ Item {
         Rectangle {
           visible: root.confirmingFix
           anchors.fill: parent
-          z: 20
+          z: 40
           color: "#d9080b12"
           border.width: 1
           border.color: "#ffb454"
@@ -770,6 +824,226 @@ Item {
                 wrapMode: Text.Wrap
                 textFormat: Text.RichText
                 onLinkActivated: function(link) { Qt.openUrlExternally(link) }
+              }
+            }
+          }
+        }
+
+        Rectangle {
+          visible: root.fixCenterOpen
+          anchors.fill: parent
+          z: 25
+          color: "#080b12"
+          border.width: 1
+          border.color: "#ffb454"
+
+          MouseArea { anchors.fill: parent; onClicked: mouse.accepted = true }
+
+          ColumnLayout {
+            anchors.fill: parent
+            anchors.margins: 22
+            spacing: 12
+
+            RowLayout {
+              Layout.fillWidth: true
+              Text {
+                text: "🧰  FIX CENTER / REPAIR CONTROL"
+                color: "#ffb454"
+                font.family: "monospace"
+                font.pixelSize: root.fontTitle
+                font.bold: true
+                Layout.fillWidth: true
+              }
+              Text {
+                text: SnapshotReader.suggestions.length + " ACTIONS"
+                color: "#52e8ff"
+                font.family: "monospace"
+                font.pixelSize: root.fontSmall
+                font.bold: true
+              }
+              Rectangle {
+                Layout.preferredWidth: 104
+                Layout.preferredHeight: 34
+                color: "#121c2b"
+                border.width: 1
+                border.color: "#ff4f9a"
+                Text { anchors.centerIn: parent; text: "CLOSE"; color: "#ff4f9a"; font.family: "monospace"; font.pixelSize: root.fontSmall; font.bold: true }
+                MouseArea { anchors.fill: parent; cursorShape: Qt.PointingHandCursor; onClicked: root.closeFixCenter() }
+              }
+            }
+
+            Text {
+              Layout.fillWidth: true
+              text: "Select a finding to review the command, man page, documentation, and repair mode. Manual repair only opens guidance; Auto Repair requires confirmation and one explicit authorization."
+              color: "#c8d2e8"
+              font.family: "monospace"
+              font.pixelSize: root.fontBody
+              wrapMode: Text.Wrap
+            }
+
+            Rectangle { Layout.fillWidth: true; height: 1; color: "#263445" }
+
+            RowLayout {
+              Layout.fillWidth: true
+              Layout.fillHeight: true
+              spacing: 12
+
+              Rectangle {
+                Layout.preferredWidth: 350
+                Layout.fillHeight: true
+                color: "#0d1320"
+                border.width: 1
+                border.color: "#263445"
+
+                ColumnLayout {
+                  anchors.fill: parent
+                  anchors.margins: 10
+                  spacing: 7
+                  Text { text: "REPAIR QUEUE"; color: "#52e8ff"; font.family: "monospace"; font.pixelSize: root.fontSection; font.bold: true }
+                  ListView {
+                    Layout.fillWidth: true
+                    Layout.fillHeight: true
+                    clip: true
+                    model: SnapshotReader.suggestions
+                    spacing: 6
+                    delegate: Rectangle {
+                      width: ListView.view.width
+                      height: 64
+                      color: root.selectedFixIndex === index ? "#1c2b43" : "#111824"
+                      border.width: 1
+                      border.color: SnapshotReader.severityColor(String(modelData.severity || "attention"))
+                      RowLayout {
+                        anchors.fill: parent
+                        anchors.margins: 9
+                        spacing: 8
+                        Text { text: String(modelData.severity || "attention").toUpperCase(); color: SnapshotReader.severityColor(String(modelData.severity || "attention")); font.family: "monospace"; font.pixelSize: root.fontMicro; font.bold: true }
+                        ColumnLayout {
+                          Layout.fillWidth: true
+                          spacing: 2
+                          Text { text: String(modelData.title || ""); color: "#f2f5f7"; font.family: "monospace"; font.pixelSize: root.fontSmall; elide: Text.ElideRight; Layout.fillWidth: true }
+                          Text { text: modelData.auto_fix ? "AUTO REPAIR AVAILABLE" : "MANUAL REVIEW REQUIRED"; color: modelData.auto_fix ? "#c8e967" : "#8290a4"; font.family: "monospace"; font.pixelSize: root.fontMicro }
+                        }
+                      }
+                      MouseArea { anchors.fill: parent; cursorShape: Qt.PointingHandCursor; onClicked: root.selectedFixIndex = index }
+                    }
+                    Text {
+                      anchors.centerIn: parent
+                      visible: SnapshotReader.suggestions.length === 0
+                      text: "NO FINDINGS / SYSTEM CLEAR"
+                      color: "#c8e967"
+                      font.family: "monospace"
+                      font.pixelSize: root.fontSmall
+                    }
+                  }
+                }
+              }
+
+              Rectangle {
+                Layout.fillWidth: true
+                Layout.fillHeight: true
+                color: "#0d1320"
+                border.width: 1
+                border.color: SnapshotReader.suggestions.length ? SnapshotReader.severityColor(String(root.selectedFix().severity || "attention")) : "#263445"
+
+                ColumnLayout {
+                  anchors.fill: parent
+                  anchors.margins: 16
+                  spacing: 10
+
+                  Text {
+                    Layout.fillWidth: true
+                    text: SnapshotReader.suggestions.length ? String(root.selectedFix().title || "SELECT A FINDING") : "NO REPAIR ACTIONS"
+                    color: SnapshotReader.suggestions.length ? SnapshotReader.severityColor(String(root.selectedFix().severity || "attention")) : "#c8e967"
+                    font.family: "monospace"
+                    font.pixelSize: root.fontTitle
+                    font.bold: true
+                    wrapMode: Text.Wrap
+                  }
+                  Text {
+                    Layout.fillWidth: true
+                    text: SnapshotReader.suggestions.length ? String(root.selectedFix().detail || "") : "The latest audit did not produce repair suggestions."
+                    color: "#c8d2e8"
+                    font.family: "monospace"
+                    font.pixelSize: root.fontBody
+                    wrapMode: Text.Wrap
+                  }
+                  Text { visible: SnapshotReader.suggestions.length > 0; text: "PROPOSED COMMAND"; color: "#52e8ff"; font.family: "monospace"; font.pixelSize: root.fontSection; font.bold: true }
+                  Rectangle {
+                    visible: SnapshotReader.suggestions.length > 0
+                    Layout.fillWidth: true
+                    Layout.preferredHeight: 52
+                    color: "#080b12"
+                    border.width: 1
+                    border.color: "#263445"
+                    Text { anchors.fill: parent; anchors.margins: 10; text: String(root.selectedFix().command || "NO AUTOMATIC COMMAND"); color: "#ffb454"; font.family: "monospace"; font.pixelSize: root.fontBody; wrapMode: Text.Wrap; verticalAlignment: Text.AlignVCenter }
+                  }
+                  RowLayout {
+                    Layout.fillWidth: true
+                    spacing: 8
+                    Rectangle {
+                      Layout.preferredWidth: 112
+                      Layout.preferredHeight: 32
+                      color: "#121c2b"
+                      border.width: 1
+                      border.color: "#52e8ff"
+                      Text { anchors.centerIn: parent; text: "MAN PAGE"; color: "#52e8ff"; font.family: "monospace"; font.pixelSize: root.fontMicro; font.bold: true }
+                      MouseArea { anchors.fill: parent; cursorShape: Qt.PointingHandCursor; onClicked: root.openFixHelp(root.selectedFix().man_url) }
+                    }
+                    Rectangle {
+                      Layout.preferredWidth: 124
+                      Layout.preferredHeight: 32
+                      color: "#121c2b"
+                      border.width: 1
+                      border.color: "#52e8ff"
+                      Text { anchors.centerIn: parent; text: "DOCUMENTATION"; color: "#52e8ff"; font.family: "monospace"; font.pixelSize: root.fontMicro; font.bold: true }
+                      MouseArea { anchors.fill: parent; cursorShape: Qt.PointingHandCursor; onClicked: root.openFixHelp(root.selectedFix().docs_url) }
+                    }
+                    Rectangle {
+                      Layout.preferredWidth: 152
+                      Layout.preferredHeight: 32
+                      color: "#121c2b"
+                      border.width: 1
+                      border.color: "#a56bff"
+                      Text { anchors.centerIn: parent; text: "VIEW MD REPORT"; color: "#a56bff"; font.family: "monospace"; font.pixelSize: root.fontMicro; font.bold: true }
+                      MouseArea { anchors.fill: parent; cursorShape: Qt.PointingHandCursor; onClicked: root.openSuggestionsReport() }
+                    }
+                  }
+                  Item { Layout.fillHeight: true }
+                  Text { visible: root.fixMessage.length > 0; Layout.fillWidth: true; text: root.fixMessage; color: root.fixMessage.indexOf("FAILED") >= 0 ? "#ff667d" : "#c8e967"; font.family: "monospace"; font.pixelSize: root.fontMicro; elide: Text.ElideMiddle }
+                  RowLayout {
+                    Layout.fillWidth: true
+                    spacing: 8
+                    Rectangle {
+                      Layout.fillWidth: true
+                      Layout.preferredHeight: 42
+                      color: "#182438"
+                      border.width: 1
+                      border.color: "#8290a4"
+                      Text { anchors.centerIn: parent; text: "MANUAL REPAIR / OPEN GUIDANCE"; color: "#c8d2e8"; font.family: "monospace"; font.pixelSize: root.fontSmall; font.bold: true }
+                      MouseArea { anchors.fill: parent; cursorShape: Qt.PointingHandCursor; onClicked: root.openFixHelp(root.selectedFix().docs_url) }
+                    }
+                    Rectangle {
+                      visible: SnapshotReader.suggestions.length > 0 && Boolean(root.selectedFix().auto_fix)
+                      Layout.fillWidth: true
+                      Layout.preferredHeight: 42
+                      color: "#2a2417"
+                      border.width: 1
+                      border.color: "#ffb454"
+                      Text { anchors.centerIn: parent; text: "AUTO REPAIR / CONFIRM"; color: "#ffb454"; font.family: "monospace"; font.pixelSize: root.fontSmall; font.bold: true }
+                      MouseArea { anchors.fill: parent; cursorShape: Qt.PointingHandCursor; onClicked: root.requestFix(String(root.selectedFix().id || "")) }
+                    }
+                  }
+                  Rectangle {
+                    visible: root.fixReportPath().length > 0
+                    Layout.preferredWidth: 180
+                    Layout.preferredHeight: 30
+                    color: "#121c2b"
+                    border.width: 1
+                    border.color: "#c8e967"
+                    Text { anchors.centerIn: parent; text: "VIEW FIX RESULT"; color: "#c8e967"; font.family: "monospace"; font.pixelSize: root.fontMicro; font.bold: true }
+                    MouseArea { anchors.fill: parent; cursorShape: Qt.PointingHandCursor; onClicked: root.openFixReport() }
+                  }
+                }
               }
             }
           }
