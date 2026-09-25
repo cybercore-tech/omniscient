@@ -1,0 +1,248 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Omniscient — Full-system audit console</title>
+<meta name="description" content="Omniscient is the Cybercore full-system audit console: one focused surface for hardware, storage, services, networking, and reports.">
+<meta name="theme-color" content="#080b12">
+<style>
+:root {
+  /* CYBERGRID-compatible keys: the palette contract used by Cybercore. */
+  --bg:#080b12; --fg:#f2f5f7; --acid:#c8e967; --pink:#ff4f9a;
+  --purple:#a56bff; --cyan:#52e8ff; --orange:#ffb454; --red:#ff667d;
+  --panel:#111824; --line:#263445; --muted:#8290a4;
+  --font-mono:"JetBrains Mono",ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
+  --font-ui:Inter,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;
+  --shadow:0 22px 70px rgba(0,0,0,.38); --ease:cubic-bezier(.2,.8,.2,1);
+}
+* { box-sizing:border-box; }
+[hidden] { display:none !important; }
+html { scroll-behavior:smooth; color-scheme:dark; scrollbar-color:var(--purple) var(--bg); }
+body { margin:0; background:var(--bg); color:var(--fg); font-family:var(--font-mono); line-height:1.6; overflow-x:hidden; }
+body::before { content:""; position:fixed; inset:0; pointer-events:none; opacity:.25; background-image:linear-gradient(rgba(255,255,255,.035) 1px,transparent 1px),linear-gradient(90deg,rgba(255,255,255,.035) 1px,transparent 1px); background-size:42px 42px; mask-image:linear-gradient(to bottom,black,transparent 85%); }
+body::after { content:""; position:fixed; inset:0; pointer-events:none; background:radial-gradient(circle at 80% 12%,color-mix(in srgb,var(--purple) 13%,transparent),transparent 28%),radial-gradient(circle at 10% 45%,color-mix(in srgb,var(--cyan) 8%,transparent),transparent 30%); }
+a { color:inherit; }
+.wrap { width:min(1160px,calc(100% - 40px)); margin:0 auto; position:relative; z-index:1; }
+.topbar { position:sticky; top:0; z-index:20; border-bottom:1px solid var(--line); background:color-mix(in srgb,var(--bg) 88%,transparent); backdrop-filter:blur(14px); }
+.topbar-inner { min-height:72px; display:flex; align-items:center; justify-content:space-between; gap:20px; }
+.brand { display:flex; align-items:center; gap:11px; text-decoration:none; font-weight:800; letter-spacing:.08em; font-size:.86rem; text-transform:uppercase; }
+.brand-mark { width:38px; height:38px; filter:drop-shadow(0 0 12px color-mix(in srgb,var(--cyan) 44%,transparent)); }
+.brand span:last-child { color:var(--acid); }
+.brand em { color:var(--muted); font-style:normal; font-weight:500; }
+.nav { display:flex; align-items:center; gap:18px; }
+.nav a { color:var(--muted); text-decoration:none; text-transform:uppercase; letter-spacing:.13em; font-size:.66rem; transition:color .2s var(--ease); }
+.nav a:hover { color:var(--cyan); }
+.theme-picker { position:relative; }
+.theme-picker-btn { display:flex; align-items:center; gap:8px; border:1px solid var(--pink); color:var(--fg); background:color-mix(in srgb,var(--panel) 90%,transparent); padding:9px 12px; cursor:pointer; font:inherit; text-transform:uppercase; letter-spacing:.08em; font-size:.64rem; }
+.theme-picker-btn:hover { box-shadow:0 0 18px color-mix(in srgb,var(--pink) 24%,transparent); }
+.swatch { width:8px; height:8px; display:inline-block; border-radius:50%; background:var(--acid); box-shadow:0 0 8px currentColor; }
+.theme-menu { position:absolute; top:calc(100% + 8px); right:0; width:230px; max-height:360px; overflow:auto; z-index:30; padding:6px; border:1px solid var(--line); background:var(--panel); box-shadow:var(--shadow); }
+.theme-menu button { width:100%; display:flex; align-items:center; gap:8px; border:0; background:transparent; color:var(--fg); padding:8px 9px; cursor:pointer; font:inherit; font-size:.68rem; text-align:left; text-transform:uppercase; }
+.theme-menu button:hover,.theme-menu button.active { color:var(--acid); background:color-mix(in srgb,var(--acid) 13%,transparent); }
+.swatches { display:flex; gap:3px; margin-left:auto; }
+.swatches i { width:10px; height:10px; border-radius:1px; }
+.hero { padding:86px 0 64px; }
+.hero-grid { display:grid; grid-template-columns:1.05fr .95fr; gap:58px; align-items:center; }
+.eyebrow,.kicker { color:var(--cyan); text-transform:uppercase; letter-spacing:.19em; font-size:.68rem; font-weight:700; }
+.eyebrow::before { content:"// "; color:var(--pink); }
+h1,h2,h3,p { margin-top:0; }
+h1 { max-width:720px; margin:18px 0 22px; font-family:var(--font-ui); font-size:clamp(3.5rem,8vw,7.8rem); line-height:.86; letter-spacing:-.09em; font-weight:800; }
+h1 .accent { display:block; color:var(--pink); text-shadow:0 0 34px color-mix(in srgb,var(--pink) 28%,transparent); }
+.hero-copy { color:var(--muted); max-width:620px; font-family:var(--font-ui); font-size:1.02rem; }
+.hero-copy strong { color:var(--fg); font-weight:600; }
+.actions { display:flex; flex-wrap:wrap; gap:10px; margin-top:28px; }
+.btn { display:inline-flex; align-items:center; gap:8px; text-decoration:none; padding:11px 15px; border:1px solid var(--cyan); color:var(--cyan); text-transform:uppercase; letter-spacing:.08em; font-size:.68rem; transition:all .2s var(--ease); }
+.btn:hover { color:var(--bg); background:var(--cyan); box-shadow:0 0 24px color-mix(in srgb,var(--cyan) 34%,transparent); }
+.btn.primary { border-color:var(--acid); color:var(--bg); background:var(--acid); }
+.btn.primary:hover { background:var(--fg); border-color:var(--fg); }
+.hero-meta { display:flex; gap:20px; margin-top:35px; color:var(--muted); font-size:.65rem; text-transform:uppercase; letter-spacing:.12em; }
+.hero-meta b { display:block; color:var(--acid); font-size:1rem; letter-spacing:0; }
+.hero-art { min-height:470px; position:relative; display:grid; place-items:center; }
+.hero-art::before { content:""; position:absolute; width:360px; height:360px; border-radius:50%; background:radial-gradient(circle,color-mix(in srgb,var(--purple) 18%,transparent),transparent 67%); filter:blur(12px); }
+.radar { width:min(100%,500px); filter:drop-shadow(0 0 22px color-mix(in srgb,var(--cyan) 18%,transparent)); }
+.radar .spin { transform-origin:160px 160px; animation:spin 16s linear infinite; }
+.radar .pulse { animation:pulse 2.6s ease-in-out infinite; transform-origin:160px 160px; }
+@keyframes spin { to { transform:rotate(360deg); } }
+@keyframes pulse { 50% { opacity:.35; transform:scale(.92); } }
+.scanline { position:absolute; left:9%; right:9%; bottom:21px; color:var(--muted); font-size:.61rem; letter-spacing:.08em; display:flex; justify-content:space-between; }
+.scanline b { color:var(--acid); font-weight:500; }
+.seam { height:1px; margin:12px 0 0; background:linear-gradient(90deg,transparent,var(--purple),var(--cyan),transparent); position:relative; }
+.seam::before,.seam::after { content:""; position:absolute; top:-3px; width:7px; height:7px; border:1px solid var(--cyan); transform:rotate(45deg); background:var(--bg); }
+.seam::before { left:12%; } .seam::after { right:12%; border-color:var(--pink); }
+section { padding:82px 0; }
+.section-head { display:flex; align-items:end; justify-content:space-between; gap:24px; margin-bottom:30px; }
+h2 { font-family:var(--font-ui); font-size:clamp(2rem,4vw,3.5rem); line-height:.98; letter-spacing:-.06em; margin:9px 0 0; }
+.section-head p { color:var(--muted); max-width:400px; margin:0; font-family:var(--font-ui); font-size:.9rem; }
+.schema-grid { display:grid; grid-template-columns:repeat(5,1fr); gap:11px; }
+.schema-card { min-height:230px; padding:18px; border:1px solid var(--line); border-top:2px solid var(--cyan); background:linear-gradient(150deg,color-mix(in srgb,var(--panel) 96%,transparent),color-mix(in srgb,var(--purple) 8%,var(--panel))); position:relative; overflow:hidden; }
+.schema-card:nth-child(2) { border-top-color:var(--pink); } .schema-card:nth-child(3) { border-top-color:var(--acid); } .schema-card:nth-child(4) { border-top-color:var(--orange); } .schema-card:nth-child(5) { border-top-color:var(--purple); }
+.schema-card::after { content:""; position:absolute; width:90px; height:90px; right:-34px; bottom:-34px; border:1px solid color-mix(in srgb,var(--cyan) 45%,transparent); transform:rotate(45deg); }
+.schema-num { color:var(--cyan); font-size:.61rem; letter-spacing:.14em; }
+.schema-card:nth-child(2) .schema-num { color:var(--pink); } .schema-card:nth-child(3) .schema-num { color:var(--acid); } .schema-card:nth-child(4) .schema-num { color:var(--orange); } .schema-card:nth-child(5) .schema-num { color:var(--purple); }
+.schema-card h3 { margin:45px 0 6px; font-size:1.12rem; letter-spacing:.04em; text-transform:uppercase; }
+.schema-card p { color:var(--muted); font-family:var(--font-ui); font-size:.8rem; line-height:1.45; }
+.schema-card code { position:absolute; left:18px; bottom:16px; color:var(--muted); font-size:.58rem; }
+.split { display:grid; grid-template-columns:1fr 1fr; gap:50px; align-items:center; }
+.copy p { color:var(--muted); font-family:var(--font-ui); max-width:540px; }
+.copy p strong { color:var(--fg); }
+.window { border:1px solid var(--line); background:var(--panel); box-shadow:var(--shadow); }
+.titlebar { display:flex; align-items:center; gap:7px; padding:10px 13px; border-bottom:1px solid var(--line); color:var(--muted); font-size:.65rem; text-transform:uppercase; letter-spacing:.1em; }
+.titlebar i { width:7px; height:7px; border-radius:50%; background:var(--pink); } .titlebar i:nth-child(2){background:var(--orange)} .titlebar i:nth-child(3){background:var(--acid)}
+.titlebar span { margin-left:7px; }
+.window-body { padding:20px; overflow:hidden; }
+pre { margin:0; color:var(--muted); font:.74rem/1.8 var(--font-mono); }
+pre .key { color:var(--cyan); } pre .value { color:var(--acid); } pre .string { color:var(--fg); }
+.module-list { display:grid; grid-template-columns:repeat(3,1fr); gap:11px; }
+.module { display:grid; grid-template-columns:38px 1fr auto; gap:12px; align-items:center; padding:15px; border:1px solid var(--line); background:color-mix(in srgb,var(--panel) 83%,transparent); }
+.module-icon { width:34px; height:34px; display:grid; place-items:center; color:var(--cyan); border:1px solid var(--cyan); font-size:.7rem; }
+.module:nth-child(2n) .module-icon { color:var(--pink); border-color:var(--pink); } .module:nth-child(3n) .module-icon { color:var(--acid); border-color:var(--acid); }
+.module b { display:block; text-transform:uppercase; font-size:.73rem; letter-spacing:.06em; } .module small { color:var(--muted); font-family:var(--font-ui); font-size:.72rem; }
+.status { color:var(--acid); font-size:.58rem; text-transform:uppercase; letter-spacing:.1em; } .status::before { content:"●"; margin-right:5px; }
+.dashboard { border:1px solid var(--line); background:var(--panel); padding:9px; position:relative; }
+.dashboard img { display:block; width:100%; height:auto; border:1px solid var(--line); filter:saturate(.86) contrast(1.05); }
+.dashboard::before { content:"LIVE AUDIT SURFACE / OMNISCIENT"; position:absolute; left:22px; top:20px; z-index:2; color:var(--acid); background:rgba(8,11,18,.82); padding:4px 7px; font-size:.57rem; letter-spacing:.1em; }
+.install { border:1px solid var(--line); background:linear-gradient(120deg,color-mix(in srgb,var(--pink) 8%,var(--panel)),var(--panel)); padding:34px; display:flex; align-items:center; justify-content:space-between; gap:25px; }
+.install h2 { font-size:2rem; } .install p { color:var(--muted); font-family:var(--font-ui); max-width:560px; margin:7px 0 0; }
+footer { border-top:1px solid var(--line); padding:30px 0 44px; color:var(--muted); font-size:.68rem; }
+.foot { display:flex; align-items:center; justify-content:space-between; gap:20px; } .foot-links { display:flex; gap:17px; } .foot a { color:var(--cyan); text-decoration:none; } .foot a:hover { color:var(--acid); }
+@media (max-width:900px) { .hero-grid,.split { grid-template-columns:1fr; } .hero-art { min-height:350px; order:-1; } .schema-grid { grid-template-columns:repeat(3,1fr); } .module-list { grid-template-columns:repeat(2,1fr); } }
+@media (max-width:620px) { .wrap { width:min(100% - 26px,1160px); } .topbar-inner { min-height:62px; } .nav a { display:none; } h1 { font-size:4rem; } .hero { padding-top:52px; } .schema-grid,.module-list { grid-template-columns:1fr; } .section-head,.install,.foot { display:block; } .section-head p { margin-top:15px; } .install .btn { margin-top:20px; } .foot-links { margin-top:17px; } }
+</style>
+</head>
+<body>
+<nav class="topbar">
+  <div class="wrap topbar-inner">
+    <a class="brand" href="#top" aria-label="Omniscient home">
+      <svg class="brand-mark" viewBox="0 0 64 64" aria-hidden="true"><circle cx="32" cy="32" r="28" fill="none" stroke="var(--acid)" stroke-width="2"/><path d="M8 32h12m24 0h12M32 8v12m0 24v12" stroke="var(--cyan)" stroke-width="2"/><path d="M15 32c8-15 26-15 34 0-8 15-26 15-34 0Z" fill="var(--panel)" stroke="var(--pink)" stroke-width="2"/><circle cx="32" cy="32" r="7" fill="var(--cyan)"/><circle cx="32" cy="32" r="3" fill="var(--bg)"/></svg>
+      <span>OMNISCIENT</span><em>/</em><span>CYBERCORE</span>
+    </a>
+    <div class="nav">
+      <a href="#surface">Surface</a><a href="#modules">Modules</a><a href="#reports">Reports</a><a href="https://github.com/cybercore-tech/omniscient">Source</a>
+      <div class="theme-picker">
+        <button class="theme-picker-btn" id="themeButton" aria-expanded="false"><i class="swatch"></i><span id="themeLabel">neon night</span><span>⌄</span></button>
+        <div class="theme-menu" id="themeMenu" hidden></div>
+      </div>
+    </div>
+  </div>
+</nav>
+
+<main id="top">
+<header class="hero">
+  <div class="wrap hero-grid">
+    <div>
+      <div class="eyebrow">full-system audit console / rust 0.1.x</div>
+      <h1>See the whole system.<span class="accent">Keep the signal.</span></h1>
+      <p class="hero-copy"><strong>Omniscient</strong> turns Linux inspection into one readable, repeatable surface — hardware, storage, services, network state, capabilities, and the report that connects them.</p>
+      <div class="actions"><a class="btn primary" href="#install">Deploy the console →</a><a class="btn" href="https://github.com/cybercore-tech/omniscient">View source</a></div>
+      <div class="hero-meta"><div><b>09</b>audit modules</div><div><b>100</b>health baseline</div><div><b>MIT</b>open source</div></div>
+    </div>
+    <div class="hero-art" aria-label="Omniscient radar logo">
+      <svg class="radar" viewBox="0 0 320 320" role="img">
+        <defs><linearGradient id="ring" x1="0" x2="1"><stop stop-color="var(--cyan)"/><stop offset=".5" stop-color="var(--purple)"/><stop offset="1" stop-color="var(--pink)"/></linearGradient><radialGradient id="core"><stop stop-color="var(--acid)" stop-opacity=".55"/><stop offset="1" stop-color="var(--acid)" stop-opacity="0"/></radialGradient></defs>
+        <circle cx="160" cy="160" r="129" fill="url(#core)" opacity=".18"/>
+        <g fill="none" stroke="var(--line)"><circle cx="160" cy="160" r="124"/><circle cx="160" cy="160" r="91"/><circle cx="160" cy="160" r="57"/><path d="M36 160h248M160 36v248M72 72l176 176M248 72 72 248"/></g>
+        <g class="spin" fill="none" stroke="url(#ring)" stroke-width="3" stroke-linecap="round"><path d="M160 36a124 124 0 0 1 88 36"/><path d="M248 248a124 124 0 0 1-88 36"/><path d="M72 248a124 124 0 0 1-36-88"/></g>
+        <g class="pulse"><path d="M70 160c21-39 59-59 90-59s69 20 90 59c-21 39-59 59-90 59s-69-20-90-59Z" fill="var(--panel)" stroke="var(--fg)" stroke-width="2"/><circle cx="160" cy="160" r="27" fill="var(--cyan)"/><circle cx="160" cy="160" r="10" fill="var(--bg)"/><circle cx="160" cy="160" r="45" fill="none" stroke="var(--pink)" stroke-dasharray="3 8"/></g>
+        <g fill="var(--acid)"><circle cx="93" cy="87" r="4"/><circle cx="253" cy="148" r="4"/><circle cx="103" cy="244" r="4"/></g><g fill="var(--pink)"><circle cx="219" cy="68" r="3"/><circle cx="60" cy="206" r="3"/></g>
+      </svg>
+      <div class="scanline"><span>OMNI/RADAR <b>● ONLINE</b></span><span>SCAN VECTOR // 360°</span></div>
+    </div>
+  </div>
+</header>
+
+<div class="wrap"><div class="seam"></div></div>
+
+<section id="surface">
+  <div class="wrap">
+    <div class="section-head"><div><div class="kicker">The audit surface</div><h2>Five passes.<br>One system picture.</h2></div><p>The Cybercore schema stays the connective tissue: shared color keys, shared tokens, shared operator language. Omniscient makes the signal actionable.</p></div>
+    <div class="schema-grid">
+      <article class="schema-card"><div class="schema-num">01 / DISCOVERY</div><h3>Hardware core</h3><p>CPU, USB, PCI, memory, and machine identity.</p><code>hw://inventory</code></article>
+      <article class="schema-card"><div class="schema-num">02 / PRESSURE</div><h3>Storage matrix</h3><p>Block devices, SMART health, and Btrfs snapshots.</p><code>io://storage</code></article>
+      <article class="schema-card"><div class="schema-num">03 / SIGNAL</div><h3>Network nexus</h3><p>Interfaces, sockets, Bluetooth, and connected devices.</p><code>net://surface</code></article>
+      <article class="schema-card"><div class="schema-num">04 / SERVICES</div><h3>Daemon watch</h3><p>Systemd units, kernel logs, and container inventory.</p><code>svc://runtime</code></article>
+      <article class="schema-card"><div class="schema-num">05 / REPORT</div><h3>Health signal</h3><p>A linked Markdown report with nothing silently hidden.</p><code>report://summary</code></article>
+    </div>
+  </div>
+</section>
+
+<section>
+  <div class="wrap split">
+    <div class="copy"><div class="kicker">The Cybercore contract</div><h2>Schema-first.<br>Operator-ready.</h2><p>Omniscient reads the same palette contract as every Cybercore surface. The page, the dashboard, and the reports speak in the same tokens — <strong>bg, fg, acid, cyan, pink, panel, line, muted.</strong></p><p>Paths stay portable through XDG defaults, privileged modules ask clearly, and unavailable tools remain visible instead of becoming false green checks.</p></div>
+    <div class="window"><div class="titlebar"><i></i><i></i><i></i><span>schema / cybergrid.json</span></div><div class="window-body"><pre>{
+  <span class="key">"schema_version"</span>: <span class="value">2</span>,
+  <span class="key">"active"</span>: <span class="string">"neon-night"</span>,
+  <span class="key">"surface"</span>: <span class="string">"omniscient"</span>,
+  <span class="key">"paths"</span>: {
+    <span class="key">"sysops_root"</span>: <span class="string">"~/.sysops"</span>,
+    <span class="key">"report_root"</span>: <span class="string">"$XDG_STATE_HOME/omniscient"</span>
+  }
+}</pre></div></div>
+  </div>
+</section>
+
+<section id="modules">
+  <div class="wrap"><div class="section-head"><div><div class="kicker">Module registry</div><h2>Every signal gets a name.</h2></div><p>Pick a focused pass or run the full system audit. Optional tools are reported as optional — never disguised as failure.</p></div>
+    <div class="module-list">
+      <div class="module"><div class="module-icon">HW</div><div><b>Hardware core</b><small>CPU · USB · PCI</small></div><span class="status">ready</span></div>
+      <div class="module"><div class="module-icon">ST</div><div><b>Storage matrix</b><small>disks · SMART · Btrfs</small></div><span class="status">ready</span></div>
+      <div class="module"><div class="module-icon">NW</div><div><b>Network nexus</b><small>links · sockets</small></div><span class="status">ready</span></div>
+      <div class="module"><div class="module-icon">CT</div><div><b>Container realm</b><small>Docker · Flatpak · Snap</small></div><span class="status">ready</span></div>
+      <div class="module"><div class="module-icon">SV</div><div><b>Services &amp; daemons</b><small>systemd units</small></div><span class="status">ready</span></div>
+      <div class="module"><div class="module-icon">KL</div><div><b>Kernel logs</b><small>journal · dmesg</small></div><span class="status">ready</span></div>
+      <div class="module"><div class="module-icon">BD</div><div><b>Bluetooth deep</b><small>visible devices</small></div><span class="status">ready</span></div>
+      <div class="module"><div class="module-icon">IO</div><div><b>Connected devices</b><small>display · audio</small></div><span class="status">ready</span></div>
+      <div class="module"><div class="module-icon">♥</div><div><b>Health score</b><small>signal · not warranty</small></div><span class="status">live</span></div>
+    </div>
+  </div>
+</section>
+
+<section id="reports">
+  <div class="wrap split">
+    <div class="dashboard"><img src="https://raw.githubusercontent.com/cybercore-tech/omniscient/main/assets/omniscient-dashboard-v0.1.0.png" alt="Omniscient audit dashboard preview"></div>
+    <div class="copy"><div class="kicker">Readable by design</div><h2>Scan once.<br>Keep the evidence.</h2><p>Every run ends in a linked Markdown report beneath <strong>~/.local/state/omniscient/</strong>. The summary keeps command failures, missing capabilities, and health signals in view.</p><div class="window"><div class="titlebar"><i></i><i></i><i></i><span>report / latest</span></div><div class="window-body"><pre><span class="value">PASS</span>  hardware.md
+<span class="value">PASS</span>  network.md
+<span class="value">WARN</span>  smartctl unavailable
+<span class="value">PASS</span>  SUMMARY.md</pre></div></div></div>
+  </div>
+</section>
+
+<section id="install">
+  <div class="wrap"><div class="install"><div><div class="kicker">Deploy the signal</div><h2>Put Omniscient<br>on the deck.</h2><p>Stable Rust, a real terminal, and a Linux system worth understanding.</p></div><div><a class="btn primary" href="https://github.com/cybercore-tech/omniscient#installation-build--deploy">Read the install path →</a><a class="btn" href="https://github.com/cybercore-tech/omniscient/releases">Releases</a></div></div></div>
+</section>
+</main>
+
+<footer><div class="wrap foot"><div>OMNISCIENT / CYBERCORE · MIT LICENSED · FULL-SYSTEM SIGNAL</div><div class="foot-links"><a href="https://github.com/cybercore-tech/omniscient">GitHub</a><a href="https://github.com/cybercore-tech/cybercore">Cybercore schema</a><a href="#top">Back to top ↑</a></div></div></footer>
+
+<script>
+const THEMES = {
+  "neon-night": {family:"cybercore", bg:"080b12", fg:"f2f5f7", acid:"c8e967", pink:"ff4f9a", purple:"a56bff", cyan:"52e8ff", orange:"ffb454", red:"ff667d", panel:"111824", line:"263445", muted:"8290a4"},
+  "cyberpunk-neon": {family:"cyberpunk", bg:"050508", fg:"f5f5f5", acid:"00ffcc", pink:"ff0055", purple:"bf00ff", cyan:"00e5ff", orange:"ff9900", red:"ff2a2a", panel:"121218", line:"252530", muted:"80808c"},
+  "tokyo-night": {family:"default", bg:"1a1b26", fg:"c0caf5", acid:"9ece6a", pink:"ff5fa5", purple:"bb9af7", cyan:"7dcfff", orange:"ff9e64", red:"f7768e", panel:"24283b", line:"3b4261", muted:"565f89"},
+  "cyberdyne-hunter": {family:"cyberdyne", bg:"010101", fg:"e6e6e6", acid:"00cc00", pink:"cc0044", purple:"330066", cyan:"009999", orange:"995500", red:"bb0000", panel:"090909", line:"1f1f1f", muted:"4a4a4a"},
+  "neosynth-pulse": {family:"neosynth", bg:"0a0510", fg:"f8f8f8", acid:"00ff8c", pink:"ff2a9d", purple:"8b00ff", cyan:"00e5ff", orange:"ff9e00", red:"ea003b", panel:"180d26", line:"331d51", muted:"8e819e"},
+  "synthwave-sunset": {family:"synthwave", bg:"0d071a", fg:"fce4ec", acid:"1df29f", pink:"ff007f", purple:"7209b7", cyan:"4cc9f0", orange:"f72585", red:"ef233c", panel:"1a1130", line:"3a2663", muted:"9e8cbd"}
+};
+const menu = document.getElementById('themeMenu');
+const button = document.getElementById('themeButton');
+const label = document.getElementById('themeLabel');
+for (const [name, theme] of Object.entries(THEMES)) {
+  const option = document.createElement('button');
+  option.type = 'button'; option.dataset.theme = name;
+  option.innerHTML = '<span>' + name.replaceAll('-', ' ') + '</span><small style="padding:0;margin-left:auto">' + theme.family + '</small><span class="swatches"><i style="background:#' + theme.acid + '"></i><i style="background:#' + theme.pink + '"></i><i style="background:#' + theme.cyan + '"></i></span>';
+  option.addEventListener('click', () => applyTheme(name)); menu.appendChild(option);
+}
+function applyTheme(name) {
+  const theme = THEMES[name]; if (!theme) return;
+  for (const [key, value] of Object.entries(theme)) if (key !== 'family') document.documentElement.style.setProperty('--' + key, '#' + value);
+  label.textContent = name.replaceAll('-', ' '); document.querySelector('.swatch').style.background = '#' + theme.acid;
+  document.querySelectorAll('.theme-menu button').forEach(item => item.classList.toggle('active', item.dataset.theme === name));
+  menu.hidden = true; button.setAttribute('aria-expanded', 'false');
+  try { localStorage.setItem('omniscient-theme', name); } catch (e) {}
+}
+button.addEventListener('click', () => { menu.hidden = !menu.hidden; button.setAttribute('aria-expanded', String(!menu.hidden)); });
+document.addEventListener('click', event => { if (!event.target.closest('.theme-picker')) { menu.hidden = true; button.setAttribute('aria-expanded', 'false'); } });
+let saved = 'neon-night'; try { saved = localStorage.getItem('omniscient-theme') || saved; } catch (e) {} applyTheme(saved);
+</script>
+</body>
+</html>
