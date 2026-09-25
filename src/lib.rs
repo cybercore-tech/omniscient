@@ -1,4 +1,5 @@
 pub mod elevation;
+pub mod fix;
 pub mod headless;
 pub mod health;
 pub mod hud;
@@ -7,4 +8,5 @@ pub mod pathcheck;
 pub mod paths;
 pub mod report;
 pub mod snapshot;
+pub mod suggestions;
 pub mod tui;

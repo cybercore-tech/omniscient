@@ -26,6 +26,8 @@ Item {
   property string message: ""
   property var modules: []
   property var reports: []
+  property var suggestions: []
+  property string suggestionsPath: ""
 
   function refresh() {
     if (!reader.running) reader.running = true
@@ -36,6 +38,29 @@ Item {
     if (value === "running") return "#ff4f9a"
     if (value === "error" || value === "failed") return "#ff667d"
     if (value === "queued") return "#ffb454"
+    return "#52e8ff"
+  }
+
+  function healthLabel(score) {
+    if (score < 0) return "WAITING"
+    if (score < 40) return "URGENT"
+    if (score < 70) return "WARNING"
+    if (score < 85) return "WATCH"
+    return "HEALTHY"
+  }
+
+  function healthColor(score) {
+    if (score < 0) return "#52e8ff"
+    if (score < 40) return "#ff667d"
+    if (score < 70) return "#ff8f70"
+    if (score < 85) return "#ffb454"
+    return "#c8e967"
+  }
+
+  function severityColor(value) {
+    if (value === "urgent") return "#ff667d"
+    if (value === "warning") return "#ff8f70"
+    if (value === "attention") return "#ffb454"
     return "#52e8ff"
   }
 
@@ -65,6 +90,8 @@ Item {
           root.snapshotPath = root.runtimePath.length > 0 ? root.runtimePath : root.fallbackPath
           root.modules = Array.isArray(value.modules) ? value.modules : []
           root.reports = Array.isArray(value.reports) ? value.reports : []
+          root.suggestions = Array.isArray(value.suggestions) ? value.suggestions : []
+          root.suggestionsPath = String(value.suggestions_path || "")
           root.healthScore = value.health && value.health.score !== undefined ? Number(value.health.score) : -1
         } catch (error) {
           root.available = false

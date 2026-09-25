@@ -600,6 +600,8 @@ fn publish_snapshot(app: &App) {
         health,
         modules,
         reports: app.report_paths.clone(),
+        suggestions: vec![],
+        suggestions_path: None,
         summary_path: app.summary_path.clone(),
         error: app.error.clone(),
         message: app.logs.back().cloned().unwrap_or_default(),

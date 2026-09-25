@@ -4,6 +4,7 @@ use crate::modules;
 use crate::paths;
 use crate::report;
 use crate::snapshot::{self, AuditSnapshot, HealthSnapshot, ModuleSnapshot};
+use crate::suggestions::{self, Suggestion};
 use anyhow::{Context, Result};
 use chrono::Local;
 use std::path::Path;
@@ -38,11 +39,15 @@ fn run_audit() -> Result<()> {
 
     let mut states = vec!["queued".to_string(); modules.len()];
     let mut reports = Vec::new();
+    let suggestions = suggestions::from_health(&health);
+    let suggestions_path = suggestions::write_report(&root, &timestamp, &health, &suggestions)?;
     publish(
         &modules,
         &states,
         &health,
         &reports,
+        &suggestions,
+        Some(suggestions_path.display().to_string()),
         None,
         "FULL SYSTEM AUDIT QUEUED",
         None,
@@ -56,6 +61,8 @@ fn run_audit() -> Result<()> {
             &states,
             &health,
             &reports,
+            &suggestions,
+            Some(suggestions_path.display().to_string()),
             None,
             &format!(
                 "[{}/{}] SCANNING {}",
@@ -79,6 +86,8 @@ fn run_audit() -> Result<()> {
                     &states,
                     &health,
                     &reports,
+                    &suggestions,
+                    Some(suggestions_path.display().to_string()),
                     None,
                     &format!("COMPLETE / {}", report_path.display()),
                     None,
@@ -91,6 +100,8 @@ fn run_audit() -> Result<()> {
                     &states,
                     &health,
                     &reports,
+                    &suggestions,
+                    Some(suggestions_path.display().to_string()),
                     None,
                     &format!("FAILED / {} / {}", module.name(), error),
                     None,
@@ -128,6 +139,8 @@ fn run_audit() -> Result<()> {
         &states,
         &health,
         &reports,
+        &suggestions,
+        Some(suggestions_path.display().to_string()),
         Some(summary_path),
         "AUDIT COMPLETE",
         None,
@@ -135,11 +148,14 @@ fn run_audit() -> Result<()> {
     Ok(())
 }
 
+#[allow(clippy::too_many_arguments)]
 fn publish(
     modules: &[Box<dyn modules::AuditModule>],
     states: &[String],
     health: &HealthReport,
     reports: &[String],
+    suggestions: &[Suggestion],
+    suggestions_path: Option<String>,
     summary_path: Option<String>,
     message: &str,
     error: Option<String>,
@@ -181,6 +197,8 @@ fn publish(
             })
             .collect(),
         reports: reports.to_vec(),
+        suggestions: suggestions.to_vec(),
+        suggestions_path,
         summary_path,
         error,
         message: message.to_string(),

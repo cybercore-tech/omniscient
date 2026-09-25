@@ -8,7 +8,13 @@ and renders the resulting report index and Markdown content in place.
 
 - Bar widget with live health score when a snapshot is available.
 - Expanded overlay panel with a run-in-place audit action, live health score,
-  module states, privilege hints, report index, and Markdown report viewer.
+  module states, privilege hints, report index, Markdown report viewer, and
+  score-colored repair suggestions.
+- Larger Cybercore typography and health levels: HEALTHY, WATCH, WARNING, and
+  URGENT.
+- Audit-generated `SUGGESTIONS.md` reports include commands, man pages, and
+  documentation links. Allowlisted package installs require an explicit in-panel
+  confirmation and produce a `fixes/` report after completion.
 - Reads XDG_RUNTIME_DIR/omniscient/snapshot.json, falling back to
   ~/.local/state/omniscient/snapshot.json.
 - Refreshes once per second and degrades to a waiting state when the snapshot
