@@ -25,6 +25,7 @@ Item {
   property string fixMessage: ""
   property bool confirmingFix: false
   property bool confirmingHelp: false
+  property bool helpLaunchLocked: false
   property string pendingHelpUrl: ""
   property string pendingHelpLabel: ""
   property bool fullReportView: false
@@ -90,6 +91,8 @@ Item {
 
   function requestHelp(url, label) {
     var value = String(url || "")
+    if (root.helpLaunchLocked)
+      return
     if (value.indexOf("https://") !== 0 && value.indexOf("http://") !== 0)
       return
     root.pendingHelpUrl = value
@@ -102,9 +105,14 @@ Item {
   }
 
   function allowHelp() {
+    if (root.helpLaunchLocked)
+      return
     root.confirmingHelp = false
-    if (root.pendingHelpUrl.length > 0 && !helpLauncher.running)
+    if (root.pendingHelpUrl.length > 0 && !helpLauncher.running) {
+      root.helpLaunchLocked = true
       helpLauncher.running = true
+      helpLaunchGuard.restart()
+    }
   }
 
   function fixReportPath() {
@@ -303,6 +311,13 @@ Item {
     command: root.pendingHelpUrl.length
       ? ["/usr/bin/xdg-open", root.pendingHelpUrl]
       : ["/usr/bin/true"]
+  }
+
+  Timer {
+    id: helpLaunchGuard
+    interval: 1500
+    repeat: false
+    onTriggered: root.helpLaunchLocked = false
   }
 
   PanelWindow {
