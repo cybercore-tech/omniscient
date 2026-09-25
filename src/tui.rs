@@ -599,8 +599,10 @@ fn publish_snapshot(app: &App) {
         completed_count,
         health,
         modules,
+        reports: app.report_paths.clone(),
         summary_path: app.summary_path.clone(),
         error: app.error.clone(),
+        message: app.logs.back().cloned().unwrap_or_default(),
     };
     // Snapshot output is an integration surface, not a reason to interrupt
     // an interactive audit if a HUD path becomes unavailable.

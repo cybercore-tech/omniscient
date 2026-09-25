@@ -10,6 +10,9 @@ Item {
   readonly property string selfId: "io.github.cybercore-tech.omniscient"
   property bool opened: false
   property var shell: null
+  property string selectedReport: ""
+  property string reportText: ""
+  property string runnerMessage: ""
 
   function open(payloadJson) {
     root.opened = true
@@ -39,9 +42,55 @@ Item {
     return SnapshotReader.stateColor(state)
   }
 
-  function launchAudit() {
-    root.close()
-    Util.execDetached("omarchy-launch-or-focus-tui --app-id=omniscient-popup omniscient")
+  function runAudit() {
+    if (auditRunner.running) return
+    root.runnerMessage = "AUDIT PROCESS STARTING"
+    root.opened = true
+    auditRunner.running = true
+    SnapshotReader.refresh()
+  }
+
+  function openReport(path) {
+    root.selectedReport = path
+    root.reportText = "LOADING REPORT..."
+    reportReader.running = true
+  }
+
+  Process {
+    id: auditRunner
+    command: ["sh", "-lc", "OMNISCIENT_AUTH=pkexec exec omniscient --hud"]
+    stderr: StdioCollector { id: auditStderr; waitForEnd: true }
+    onExited: function(exitCode) {
+      SnapshotReader.refresh()
+      if (exitCode !== 0) {
+        root.runnerMessage = auditStderr.text.trim().length
+          ? auditStderr.text.trim()
+          : "AUDIT PROCESS EXITED / CODE " + exitCode
+      } else {
+        root.runnerMessage = "AUDIT PROCESS COMPLETE"
+      }
+    }
+  }
+
+  Process {
+    id: reportReader
+    command: root.selectedReport.length ? ["cat", root.selectedReport] : ["true"]
+    stdout: StdioCollector {
+      id: reportStdout
+      waitForEnd: true
+      onStreamFinished: root.reportText = text.trim()
+    }
+    stderr: StdioCollector {
+      id: reportStderr
+      waitForEnd: true
+    }
+    onExited: function(exitCode) {
+      if (exitCode !== 0) {
+        root.reportText = reportStderr.text.trim().length
+          ? reportStderr.text.trim()
+          : "REPORT COULD NOT BE READ"
+      }
+    }
   }
 
   PanelWindow {
@@ -61,8 +110,8 @@ Item {
 
     Rectangle {
       id: card
-      width: 720
-      height: 470
+      width: Math.min(1100, parent.width - 36)
+      height: Math.min(680, parent.height - 36)
       anchors.centerIn: parent
       radius: 7
       color: "#080b12"
@@ -144,7 +193,9 @@ Item {
             Text { text: "SNAPSHOT CONTRACT / V1"; color: "#52e8ff"; font.family: "monospace"; font.pixelSize: 9 }
             Text {
               Layout.fillWidth: true
-              text: SnapshotReader.available ? "Atomic local state is available to the HUD." : "Run Omniscient once to publish the first state snapshot."
+              text: SnapshotReader.available
+                ? (SnapshotReader.message.length ? SnapshotReader.message : "Atomic local state is available to the HUD.")
+                : "Run the audit here to publish the first state snapshot."
               color: "#8290a4"; font.family: "monospace"; font.pixelSize: 11; wrapMode: Text.Wrap
             }
             Text {
@@ -162,7 +213,7 @@ Item {
               border.color: "#ff4f9a"
               Text {
                 anchors.centerIn: parent
-                text: "RUN OMNISCIENT"
+                text: auditRunner.running ? "AUDIT RUNNING..." : "RUN AUDIT HERE"
                 color: "#ff4f9a"
                 font.family: "monospace"
                 font.pixelSize: 9
@@ -171,7 +222,7 @@ Item {
               MouseArea {
                 anchors.fill: parent
                 cursorShape: Qt.PointingHandCursor
-                onClicked: root.launchAudit()
+                onClicked: root.runAudit()
               }
             }
           }
@@ -181,7 +232,7 @@ Item {
 
         GridLayout {
           Layout.fillWidth: true
-          Layout.fillHeight: true
+          Layout.preferredHeight: 190
           columns: 3
           rowSpacing: 7
           columnSpacing: 7
@@ -201,6 +252,96 @@ Item {
                 Text { text: String(modelData.name || "").toUpperCase(); color: "#f2f5f7"; font.family: "monospace"; font.pixelSize: 9; elide: Text.ElideRight; Layout.fillWidth: true }
                 Text { text: String(modelData.state || "unknown").toUpperCase(); color: root.moduleStateColor(String(modelData.state || "unknown")); font.family: "monospace"; font.pixelSize: 8 }
                 Text { text: modelData.requires_sudo ? "ELEVATED" : "USER MODE"; color: "#8290a4"; font.family: "monospace"; font.pixelSize: 8 }
+              }
+            }
+          }
+        }
+
+        RowLayout {
+          Layout.fillWidth: true
+          Layout.fillHeight: true
+          spacing: 10
+
+          Rectangle {
+            Layout.preferredWidth: 250
+            Layout.fillHeight: true
+            color: "#0d1320"
+            border.width: 1
+            border.color: "#263445"
+            ColumnLayout {
+              anchors.fill: parent
+              anchors.margins: 10
+              spacing: 6
+              Text { text: "REPORT INDEX"; color: "#52e8ff"; font.family: "monospace"; font.pixelSize: 9 }
+              ListView {
+                Layout.fillWidth: true
+                Layout.fillHeight: true
+                clip: true
+                model: SnapshotReader.reports
+                delegate: Rectangle {
+                  width: ListView.view.width
+                  height: 28
+                  color: root.selectedReport === String(modelData) ? "#1a2940" : "transparent"
+                  Text {
+                    anchors.fill: parent
+                    anchors.margins: 6
+                    text: String(modelData).split("/").pop()
+                    color: root.selectedReport === String(modelData) ? "#c8e967" : "#8290a4"
+                    font.family: "monospace"
+                    font.pixelSize: 8
+                    elide: Text.ElideMiddle
+                  }
+                  MouseArea {
+                    anchors.fill: parent
+                    cursorShape: Qt.PointingHandCursor
+                    onClicked: root.openReport(String(modelData))
+                  }
+                }
+                Text {
+                  anchors.centerIn: parent
+                  visible: SnapshotReader.reports.length === 0
+                  text: "NO REPORTS YET"
+                  color: "#8290a4"
+                  font.family: "monospace"
+                  font.pixelSize: 9
+                }
+              }
+            }
+          }
+
+          Rectangle {
+            Layout.fillWidth: true
+            Layout.fillHeight: true
+            color: "#0d1320"
+            border.width: 1
+            border.color: "#263445"
+            ColumnLayout {
+              anchors.fill: parent
+              anchors.margins: 10
+              spacing: 6
+              Text {
+                text: root.selectedReport.length ? "REPORT VIEW / " + root.selectedReport.split("/").pop() : "REPORT VIEW"
+                color: "#ff4f9a"
+                font.family: "monospace"
+                font.pixelSize: 9
+                elide: Text.ElideMiddle
+                Layout.fillWidth: true
+              }
+              Flickable {
+                Layout.fillWidth: true
+                Layout.fillHeight: true
+                clip: true
+                contentWidth: width
+                contentHeight: reportBody.paintedHeight
+                Text {
+                  id: reportBody
+                  width: parent.width
+                  text: root.reportText.length ? root.reportText : "SELECT A REPORT TO VIEW IT HERE"
+                  color: "#c8d2e8"
+                  font.family: "monospace"
+                  font.pixelSize: 9
+                  wrapMode: Text.Wrap
+                }
               }
             }
           }

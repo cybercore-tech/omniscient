@@ -19,8 +19,10 @@ pub struct AuditSnapshot {
     pub completed_count: usize,
     pub health: Option<HealthSnapshot>,
     pub modules: Vec<ModuleSnapshot>,
+    pub reports: Vec<String>,
     pub summary_path: Option<String>,
     pub error: Option<String>,
+    pub message: String,
 }
 
 #[derive(Debug, Serialize)]
@@ -113,8 +115,10 @@ mod tests {
                 selected: true,
                 requires_sudo: false,
             }],
+            reports: vec![],
             summary_path: None,
             error: None,
+            message: "READY".to_string(),
         };
 
         let json = serde_json::to_value(snapshot).expect("snapshot should serialize");

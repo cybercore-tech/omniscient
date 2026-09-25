@@ -23,7 +23,9 @@ Item {
   property string summaryPath: ""
   property string errorMessage: ""
   property string snapshotPath: ""
+  property string message: ""
   property var modules: []
+  property var reports: []
 
   function refresh() {
     if (!reader.running) reader.running = true
@@ -59,8 +61,10 @@ Item {
           root.completedCount = Number(value.completed_count || 0)
           root.summaryPath = String(value.summary_path || "")
           root.errorMessage = String(value.error || "")
+          root.message = String(value.message || "")
           root.snapshotPath = root.runtimePath.length > 0 ? root.runtimePath : root.fallbackPath
           root.modules = Array.isArray(value.modules) ? value.modules : []
+          root.reports = Array.isArray(value.reports) ? value.reports : []
           root.healthScore = value.health && value.health.score !== undefined ? Number(value.health.score) : -1
         } catch (error) {
           root.available = false
