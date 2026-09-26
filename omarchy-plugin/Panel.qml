@@ -26,6 +26,7 @@ Item {
   property bool confirmingFix: false
   property bool confirmingHelp: false
   property bool helpLaunchLocked: false
+  property bool packageScanFinished: false
   property string packageCategory: "ALL"
   property var packageCategories: ["ALL", "ARCH OFFICIAL", "OMARCHY", "BLACKARCH", "CHAOTIC AUR", "AUR / FOREIGN"]
   property string pendingHelpUrl: ""
@@ -150,6 +151,7 @@ Item {
     if (auditRunner.running || packageRunner.running) return
     root.runnerMessage = "AUDIT PROCESS STARTING"
     root.packageCategory = "ALL"
+    root.packageScanFinished = false
     root.opened = true
     auditRunner.running = true
     SnapshotReader.refresh()
@@ -159,6 +161,7 @@ Item {
     if (auditRunner.running || packageRunner.running) return
     root.runnerMessage = "PACKAGE SCAN STARTING"
     root.packageCategory = "ALL"
+    root.packageScanFinished = false
     root.opened = true
     packageRunner.running = true
     SnapshotReader.refresh()
@@ -166,6 +169,7 @@ Item {
 
   function openReport(path) {
     root.fixCenterOpen = false
+    root.fullReportView = false
     var value = String(path || "")
     // Storage Matrix historically emitted storage.md under the disks
     // directory while older snapshots indexed it as disks.md. Keep those
@@ -187,16 +191,34 @@ Item {
   }
 
   function reportForModule(slug) {
-    var needle = "/" + String(slug || "") + "-"
+    var valueSlug = String(slug || "")
+    var reportName = valueSlug === "disks" ? "storage.md" : valueSlug + ".md"
     for (var i = 0; i < SnapshotReader.reports.length; i++) {
       var value = String(SnapshotReader.reports[i] || "")
-      if (value.indexOf(needle) >= 0) return value
+      if (value.endsWith("/" + reportName)) return value
     }
     return ""
   }
 
   function openModuleReport(slug) {
     var path = root.reportForModule(slug)
+    if (path.length > 0) {
+      root.openReport(path)
+    } else {
+      root.runnerMessage = "REPORT NOT AVAILABLE / RUN THE MODULE FIRST"
+    }
+  }
+
+  function packageReportPath() {
+    for (var i = 0; i < SnapshotReader.reports.length; i++) {
+      var value = String(SnapshotReader.reports[i] || "")
+      if (root.isPackageReport(value)) return value
+    }
+    return ""
+  }
+
+  function openPackageReport() {
+    var path = root.packageReportPath()
     if (path.length > 0) root.openReport(path)
   }
 
@@ -270,14 +292,20 @@ Item {
 
   function highlightCode(value) {
     var html = escapeHtml(value)
+    html = html.replace(/^(\s*)([A-Za-z][A-Za-z0-9 _()\/.+-]{1,38}:)(.*)$/, "$1<font color='#52e8ff'><b>$2</b></font><font color='#f2f5f7'>$3</font>")
+    html = html.replace(/^(\s*)([├└│─┬┌┐┘└▶▸◆●•]+)(.*)$/, "$1<font color='#a56bff'><b>$2</b></font><font color='#c8d2e8'>$3</font>")
+    html = html.replace(/^(\s*)(lscpu|lsblk|pacman|systemctl|journalctl|dmesg|flatpak|snap|findmnt|btrfs|smartctl)(\b.*)$/, "$1<font color='#52e8ff'><b>$2</b></font><font color='#c8d2e8'>$3</font>")
     html = html.replace(/^(ARCH OFFICIAL|OMARCHY|BLACKARCH|CHAOTIC AUR|AUR \/ FOREIGN)(\s*\/.*)$/,
       "<font color='#52e8ff'><b>$1</b></font><font color='#8290a4'>$2</font>")
     html = html.replace(/\b(UPDATE AVAILABLE)\b/g, "<font color='#ffb454'><b>$1</b></font>")
     html = html.replace(/\b(CURRENT)\b/g, "<font color='#c8e967'><b>$1</b></font>")
     html = html.replace(/\b(FAILED|ERROR|WARNING|WARN)\b/g, "<font color='#ff667d'><b>$1</b></font>")
     html = html.replace(/\b(PASS|COMPLETE|READY|HEALTHY)\b/g, "<font color='#c8e967'><b>$1</b></font>")
+    html = html.replace(/\b(unavailable|not installed|skipped|unknown|N\/A)\b/gi, "<font color='#ff8f70'><b>$1</b></font>")
     html = html.replace(/\b([0-9]+(?::[0-9]+)?(?:\.[0-9A-Za-z]+)+(?:[-+][0-9A-Za-z.+:~_-]+)?)\b/g,
       "<font color='#ffb454'>$1</font>")
+    html = html.replace(/(\/\/[A-Za-z0-9._-]+|\/[A-Za-z0-9._~:@%+\-]+(?:\/[A-Za-z0-9._~:@%+\-]+)*)/g,
+      "<font color='#52e8ff'>$1</font>")
     html = html.replace(/(https?:\/\/[^\s<]+)/g, "<font color='#52e8ff'>$1</font>")
     return html
   }
@@ -375,6 +403,7 @@ Item {
     stderr: StdioCollector { id: packageStderr; waitForEnd: true }
     onExited: function(exitCode) {
       SnapshotReader.refresh()
+      root.packageScanFinished = exitCode === 0
       if (exitCode !== 0) {
         root.runnerMessage = packageStderr.text.trim().length
           ? packageStderr.text.trim()
@@ -615,6 +644,50 @@ Item {
                   onEntered: parent.hovered = true
                   onExited: parent.hovered = false
                   onClicked: root.runPackageScan()
+                }
+              }
+            }
+            Rectangle {
+              visible: packageRunner.running || (root.packageScanFinished && root.packageReportPath().length > 0)
+              Layout.fillWidth: true
+              Layout.preferredHeight: 64
+              color: packageRunner.running ? "#191522" : "#132019"
+              border.width: 1
+              border.color: packageRunner.running ? "#ffb454" : "#c8e967"
+              RowLayout {
+                anchors.fill: parent
+                anchors.margins: 10
+                spacing: 10
+                ColumnLayout {
+                  Layout.fillWidth: true
+                  spacing: 2
+                  Text {
+                    text: packageRunner.running ? "PACKAGE SCAN / ACTIVE" : "PACKAGE SCAN / COMPLETE"
+                    color: packageRunner.running ? "#ffb454" : "#c8e967"
+                    font.family: "monospace"
+                    font.pixelSize: root.fontSmall
+                    font.bold: true
+                  }
+                  Text {
+                    Layout.fillWidth: true
+                    text: packageRunner.running
+                      ? (SnapshotReader.message.length ? SnapshotReader.message : "Package Integrity is collecting read-only evidence…")
+                      : "Package report is ready. Review categories, versions, and status markers."
+                    color: "#c8d2e8"
+                    font.family: "monospace"
+                    font.pixelSize: root.fontMicro
+                    elide: Text.ElideRight
+                  }
+                }
+                Rectangle {
+                  visible: !packageRunner.running && root.packageReportPath().length > 0
+                  Layout.preferredWidth: 150
+                  Layout.preferredHeight: 32
+                  color: "#182438"
+                  border.width: 1
+                  border.color: "#52e8ff"
+                  Text { anchors.centerIn: parent; text: "OPEN PACKAGE REPORT"; color: "#52e8ff"; font.family: "monospace"; font.pixelSize: root.fontMicro; font.bold: true }
+                  MouseArea { anchors.fill: parent; cursorShape: Qt.PointingHandCursor; onClicked: root.openPackageReport() }
                 }
               }
             }

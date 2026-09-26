@@ -47,7 +47,16 @@ fn run_audit(selected_slugs: Option<&[&str]>) -> Result<()> {
             .filter(|(_, module)| slugs.contains(&module.slug()))
             .map(|(index, _)| index)
             .collect::<Vec<_>>(),
-        None => (0..modules.len()).collect::<Vec<_>>(),
+        // Package Integrity has a deliberately separate HUD action because
+        // pacman file verification can dominate the duration of a normal
+        // system pass. Keep the standard headless audit focused on the
+        // operational modules; --packages selects it explicitly.
+        None => modules
+            .iter()
+            .enumerate()
+            .filter(|(_, module)| module.slug() != "packages")
+            .map(|(index, _)| index)
+            .collect::<Vec<_>>(),
     };
     if selected.is_empty() {
         bail!("no audit modules matched the requested selection");

@@ -8,6 +8,9 @@ All notable changes to Omniscient are documented here.
 - Added a dedicated `omniscient --packages` headless path and a separate
   Omarchy `PACKAGE SCAN` action so package verification is opt-in rather than
   part of every full HUD audit.
+- Removed Package Integrity from the default headless full-audit selection;
+  the standard HUD pass now scans the 16 operational modules and leaves the
+  package module to its explicit action.
 - Expanded Package Integrity reports with Arch Official, Omarchy, BlackArch,
   Chaotic AUR, and AUR/Foreign origin categories, installed versions, and
   `CURRENT` / `UPDATE AVAILABLE` status markers.

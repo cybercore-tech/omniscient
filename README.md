@@ -221,7 +221,8 @@ Flatpak versions, Snap versions, and Omarchy package information in separate
 sections so a long inventory remains auditable.
 
 The Omarchy HUD adds a `PACKAGE SCAN` action beside `RUN FULL AUDIT`. A full
-audit selects all 17 modules. A package scan selects only Package Integrity,
+audit selects the 16 operational modules. Package Integrity is intentionally
+excluded from that default pass. A package scan selects only Package Integrity,
 marks the other modules idle, updates the live snapshot as the package pass
 progresses, and writes a normal Markdown report plus `SUMMARY.md`. The report
 viewer adds category buttons for `ALL`, `ARCH OFFICIAL`, `OMARCHY`,

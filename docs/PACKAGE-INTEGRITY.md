@@ -60,8 +60,9 @@ reimplement repository version ordering.
 
 ## Focused scan behavior
 
-The normal HUD action, `RUN FULL AUDIT`, selects all 17 modules. The separate
-`PACKAGE SCAN` action runs:
+The normal HUD action, `RUN FULL AUDIT`, selects the 16 operational modules.
+Package Integrity is intentionally excluded from that default pass. The
+separate `PACKAGE SCAN` action runs:
 
 ```bash
 omniscient --packages

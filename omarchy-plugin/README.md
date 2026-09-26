@@ -10,6 +10,9 @@ and renders the resulting report index and Markdown content in place.
 - Expanded overlay panel with separate `RUN FULL AUDIT` and `PACKAGE SCAN`
   actions, live health score, module states, privilege hints, report index,
   Markdown report viewer, and score-colored repair suggestions.
+- `RUN FULL AUDIT` covers the 16 operational modules. Package Integrity is
+  intentionally opt-in through `PACKAGE SCAN` because file verification can
+  be materially slower than the normal system pass.
 - Package Integrity has its own focused scan path. The report reader exposes
   `ALL`, `ARCH OFFICIAL`, `OMARCHY`, `BLACKARCH`, `CHAOTIC AUR`, and
   `AUR / FOREIGN` category buttons. Package versions and `CURRENT` /
