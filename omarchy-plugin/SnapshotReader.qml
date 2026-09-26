@@ -30,8 +30,8 @@ Singleton {
   property var suggestions: []
   property string suggestionsPath: ""
 
-  // The snapshot is re-read on a timer, but it only changes when an audit
-  // runs. Every assignment below re-evaluates the panel's bindings, and a new
+  // The snapshot is re-read when its file changes (inotify through
+  // FileView), with a slow safety poll; it only changes while an audit runs. Every assignment below re-evaluates the panel's bindings, and a new
   // array rebuilds every Repeater and ListView delegate that uses it, so an
   // unchanged snapshot must cause no assignments at all. Reading once per
   // second and replacing every array each time is what let the HUD churn the
@@ -42,9 +42,20 @@ Singleton {
   property string lastRaw: ""
   property int consumeCount: 0
   property int applyCount: 0
+  property bool refreshPending: false
 
   function refresh() {
-    if (!runtimeReader.running && !fallbackReader.running) runtimeReader.running = true
+    if (runtimeReader.running || fallbackReader.running) {
+      // A change landed mid-read; read again when this read finishes.
+      root.refreshPending = true
+      return
+    }
+    root.refreshPending = false
+    runtimeReader.running = true
+  }
+
+  function readFinished() {
+    if (root.refreshPending) root.refresh()
   }
 
   function boundedText(value) {
@@ -159,7 +170,10 @@ Singleton {
     }
     // Process.exited's QProcess::ExitStatus parameter type is not in
     // Quickshell's type description; the handler is valid at runtime.
-    onExited: if (!runtimeOutput.text.trim().length) fallbackReader.running = true // qmllint disable signal-handler-parameters
+    onExited: { // qmllint disable signal-handler-parameters
+      if (!runtimeOutput.text.trim().length) fallbackReader.running = true
+      else root.readFinished()
+    }
   }
 
   Process {
@@ -170,10 +184,31 @@ Singleton {
       waitForEnd: true
       onStreamFinished: root.consume(text)
     }
+    onExited: root.readFinished() // qmllint disable signal-handler-parameters
   }
 
+  // Change triggers only: preload is off so FileView never pulls the file
+  // in whole; the bounded `head -c` readers above do the reading. Verified
+  // to follow atomic renames, in-place writes, deletion and re-creation.
+  FileView {
+    path: root.runtimePath
+    preload: false
+    watchChanges: root.runtimePath.length > 0
+    printErrors: false
+    onFileChanged: root.refresh()
+  }
+
+  FileView {
+    path: root.fallbackPath
+    preload: false
+    watchChanges: true
+    printErrors: false
+    onFileChanged: root.refresh()
+  }
+
+  // Safety net for filesystems or limits where inotify is unavailable.
   Timer {
-    interval: 2000
+    interval: 30000
     repeat: true
     running: true
     onTriggered: root.refresh()

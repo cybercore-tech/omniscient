@@ -14,7 +14,7 @@ import sys
 MODULES = [
     "hardware", "disks", "snapshots", "network", "containers", "services", "logs",
     "bluetooth", "devices", "security", "accounts", "persistence", "packages",
-    "recovery", "reliability", "performance", "omarchy",
+    "recovery", "reliability", "performance", "omarchy", "signals",
 ]
 
 

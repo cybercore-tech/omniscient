@@ -467,6 +467,8 @@ Item {
 
   function reportIcon(path) {
     var value = String(path).toLowerCase()
+    if (value.indexOf("signals") >= 0) return "🧠"
+    if (value.indexOf("changes") >= 0) return "🔀"
     if (value.indexOf("hardware") >= 0) return "🖥️"
     if (value.indexOf("storage") >= 0) return "💾"
     if (value.indexOf("snapshot") >= 0) return "📸"

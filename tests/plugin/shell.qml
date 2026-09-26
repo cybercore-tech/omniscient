@@ -25,6 +25,7 @@ ShellRoot {
   property double maxGap: 0
   property int soakRewrites: 0
   property int applyBefore: 0
+  property int readsBefore: 0
   // Longest tolerated UI-thread stall. Rendering is virtualized, so this
   // holds for any report size; before virtualization a dense 512 KiB report
   // stalled this (slow, i3-8130U) machine for ~2.7 s.
@@ -40,8 +41,10 @@ ShellRoot {
     console.log("MARK " + label + " " + Date.now())
   }
 
+  // Installs a fixture the way the backend publishes a snapshot: write a
+  // temporary file, then rename it into place.
   function install(name) {
-    installer.command = ["/usr/bin/cp", "--", harness.fixtures + "/" + name, harness.runtimeSnapshot]
+    installer.command = ["/usr/bin/cp", "--", harness.fixtures + "/" + name, harness.runtimeSnapshot + ".tmp"]
     installer.running = true
   }
 
@@ -61,16 +64,21 @@ ShellRoot {
       harness.check(harness.panel !== null, "panel loads", panelLoader.status === Loader.Error ? "Loader.Error" : "")
       if (harness.panel === null) harness.stepIndex = harness.steps.length - 1
     } },
-    { name: "initial snapshot", wait: 7000, run: function() {
+    { name: "initial snapshot", wait: 2000, run: function() {
       harness.check(SnapshotReader.available, "initial snapshot is read", SnapshotReader.errorMessage)
       harness.check(SnapshotReader.applyCount === 1, "initial snapshot applied once", SnapshotReader.applyCount)
-      harness.check(SnapshotReader.modules.length === 17, "modules parsed", SnapshotReader.modules.length)
+      harness.check(SnapshotReader.modules.length === 18, "modules parsed", SnapshotReader.modules.length)
       harness.check(SnapshotReader.healthScore === 90, "health parsed", SnapshotReader.healthScore)
       harness.applyBefore = SnapshotReader.applyCount
       harness.panel.open("{}")
     } },
+    { name: "idle window", wait: 6000, run: function() {
+      // Opening the panel reads the snapshot once; idle starts after that.
+      harness.readsBefore = SnapshotReader.consumeCount
+    } },
     { name: "idle polling does not churn", wait: 3000, run: function() {
-      harness.check(SnapshotReader.consumeCount >= 4, "snapshot is polled", SnapshotReader.consumeCount)
+      harness.check(SnapshotReader.consumeCount === harness.readsBefore,
+        "an idle panel reads nothing (file watching, not polling)", SnapshotReader.consumeCount - harness.readsBefore + " reads")
       harness.check(SnapshotReader.applyCount === harness.applyBefore,
         "an unchanged snapshot causes no reassignment", SnapshotReader.applyCount)
       harness.check(harness.panel.opened, "panel opens")
@@ -228,6 +236,12 @@ ShellRoot {
 
   Process {
     id: installer
+    onExited: mover.running = true // qmllint disable signal-handler-parameters
+  }
+
+  Process {
+    id: mover
+    command: ["/usr/bin/mv", "-f", "--", harness.runtimeSnapshot + ".tmp", harness.runtimeSnapshot]
   }
 
   // Alternates identical rewrites (must cause no reassignment) with real
