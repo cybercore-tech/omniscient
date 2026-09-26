@@ -13,7 +13,7 @@ use std::process::Command;
 /// This replaces the fish version's triple-duplicated switch/case
 /// dispatch (menu labels, full-audit loop, single-module loop all
 /// repeated the same 9-way match by hand) with one list, defined once.
-pub trait AuditModule {
+pub trait AuditModule: Send + Sync {
     fn name(&self) -> &'static str;
     fn slug(&self) -> &'static str;
     /// The Markdown filename emitted inside this module's report directory.
@@ -95,8 +95,12 @@ fn capture_privileged(command: &str, args: &[&str]) -> String {
     if crate::elevation::is_privileged() {
         return capture(&executable, args);
     }
-    let elevated_args = crate::elevation::args(&executable, args);
-    capture(crate::elevation::program(), &elevated_args)
+    // Never prompt from inside a module: `sudo -n` fails at once without a
+    // cached credential, and per-command pkexec is not used at all.
+    match crate::elevation::non_interactive_args(&executable, args) {
+        Some(elevated_args) => capture(crate::elevation::program(), &elevated_args),
+        None => format!("_{command}: needs the elevated audit_\n"),
+    }
 }
 
 /// Most bytes of one module report. Sections are already bounded by
@@ -142,6 +146,7 @@ fn render_report<S: AsRef<str>>(title: &str, sections: &[(S, String)]) -> String
 fn report_emoji(title: &str) -> &'static str {
     match title {
         "HARDWARE CORE" | "OMARCHY SURFACE" => "🖥️",
+        "DEEP SIGNALS" => "🧠",
         "STORAGE MATRIX" => "💾",
         "BTRFS SNAPSHOTS" => "📸",
         "NETWORK" => "🌐",
@@ -733,17 +738,7 @@ impl AuditModule for PackageIntegrity {
                     "foreign packages / AUR candidates",
                     capture("pacman", &["-Qm"]),
                 ),
-                (
-                    "package file integrity",
-                    capture_with(
-                        "pacman",
-                        &["-Qkk"],
-                        crate::capture::Limits {
-                            timeout: std::time::Duration::from_mins(15),
-                            ..crate::capture::Limits::default()
-                        },
-                    ),
-                ),
+                ("package file integrity", package_file_integrity()),
                 (
                     "flatpak applications / versions",
                     capture(
@@ -1164,6 +1159,104 @@ impl AuditModule for Omarchy {
 /// paths all iterate this same list — nowhere else is the set of
 /// modules spelled out by hand.
 #[must_use]
+/// `pacman -Qkk` over every installed package, split across parallel
+/// workers. Deliberately never cached: the check exists to catch files
+/// changed outside pacman, which a cache keyed on the package database would
+/// hide.
+fn package_file_integrity() -> String {
+    let Some(list) = command_stdout("pacman", &["-Qq"]) else {
+        return capture("pacman", &["-Qkk"]);
+    };
+    let packages = list.lines().map(str::to_owned).collect::<Vec<_>>();
+    if packages.is_empty() {
+        return "_pacman reported no installed packages._\n".to_owned();
+    }
+    let workers = crate::runner::workers();
+    let per_chunk = packages.len().div_ceil(workers);
+    let limits = crate::capture::Limits {
+        timeout: std::time::Duration::from_mins(15),
+        retain_bytes: crate::capture::MAX_SECTION_BYTES,
+    };
+    let results = std::thread::scope(|scope| {
+        let handles = packages
+            .chunks(per_chunk)
+            .map(|chunk| {
+                scope.spawn(move || {
+                    let mut args = vec!["-Qkk"];
+                    args.extend(chunk.iter().map(String::as_str));
+                    capture_with("pacman", &args, limits)
+                })
+            })
+            .collect::<Vec<_>>();
+        handles
+            .into_iter()
+            .map(|handle| {
+                handle
+                    .join()
+                    .unwrap_or_else(|_| "_a pacman -Qkk worker panicked_\n".to_owned())
+            })
+            .collect::<Vec<_>>()
+    });
+    let mut out = format!(
+        "{} packages verified by {} parallel pacman -Qkk workers\n\n",
+        packages.len(),
+        results.len()
+    );
+    for result in results {
+        out.push_str(result.trim_end());
+        out.push('\n');
+    }
+    out
+}
+
+/// Checks most audit tools skip: see [`crate::signals`].
+pub struct DeepSignals;
+impl AuditModule for DeepSignals {
+    fn name(&self) -> &'static str {
+        "Deep Signals"
+    }
+    fn slug(&self) -> &'static str {
+        "signals"
+    }
+    fn menu_label(&self) -> &'static str {
+        "🧠 Deep Signals"
+    }
+    fn tools(&self) -> &'static [&'static str] {
+        &[
+            "coredumpctl",
+            "journalctl",
+            "systemctl",
+            "smartctl",
+            "btrfs",
+            "ss",
+        ]
+    }
+    fn optional_tools(&self) -> &'static [&'static str] {
+        self.tools()
+    }
+    fn requires_sudo(&self) -> bool {
+        true
+    }
+    fn run(&self, dir: &Path) -> Result<()> {
+        let sections = crate::signals::collect();
+        let json = crate::signals::write(dir, &sections)?;
+        let findings = crate::signals::load(&json)
+            .map(|s| s.findings)
+            .unwrap_or_default();
+        let mut report = vec![(
+            "findings".to_owned(),
+            crate::signals::render_findings(&findings),
+        )];
+        report.extend(
+            sections
+                .into_iter()
+                .map(|section| (section.heading.to_owned(), section.body)),
+        );
+        write_report(dir, "signals.md", "DEEP SIGNALS", &report)
+    }
+}
+
+#[must_use]
 pub fn all_modules() -> Vec<Box<dyn AuditModule>> {
     vec![
         Box::new(Hardware),
@@ -1183,6 +1276,7 @@ pub fn all_modules() -> Vec<Box<dyn AuditModule>> {
         Box::new(Reliability),
         Box::new(Performance),
         Box::new(Omarchy),
+        Box::new(DeepSignals),
     ]
 }
 
@@ -1220,7 +1314,7 @@ mod tests {
 
         assert_eq!(
             privileged,
-            HashSet::from(["hardware", "disks", "snapshots", "logs"])
+            HashSet::from(["hardware", "disks", "snapshots", "logs", "signals"])
         );
     }
 
@@ -1354,5 +1448,32 @@ mod tests {
             !report.contains('\u{1b}') && !report.contains('\u{3}'),
             "control characters removed"
         );
+    }
+
+    /// Host check: runs the real Deep Signals module on this machine.
+    /// `OMNISCIENT_SHOW_REPORT=1 cargo test -- --ignored real_deep_signals --nocapture`
+    #[test]
+    #[ignore = "runs real host commands"]
+    fn real_deep_signals_run() {
+        let directory =
+            std::env::temp_dir().join(format!("omniscient-signals-{}", std::process::id()));
+        fs::create_dir_all(&directory).expect("create report directory");
+        let started = std::time::Instant::now();
+        DeepSignals.run(&directory).expect("module runs");
+        let report = fs::read_to_string(directory.join("signals.md")).expect("report written");
+        let signals = crate::signals::load(&directory.join(crate::signals::SIGNALS_JSON))
+            .expect("signals.json");
+        fs::remove_dir_all(&directory).expect("remove report directory");
+        if std::env::var_os("OMNISCIENT_SHOW_REPORT").is_some() {
+            eprintln!("{report}");
+        }
+        eprintln!(
+            "signals.md: {} bytes, {} findings, {} fact sets, {:?}",
+            report.len(),
+            signals.findings.len(),
+            signals.facts.len(),
+            started.elapsed()
+        );
+        assert!(report.len() <= MAX_REPORT_BYTES + 64 * 1024);
     }
 }

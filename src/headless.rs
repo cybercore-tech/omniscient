@@ -3,6 +3,7 @@ use crate::health::{self, HealthReport};
 use crate::modules;
 use crate::paths;
 use crate::report;
+use crate::runner;
 use crate::snapshot::{self, AuditSnapshot, HealthSnapshot, ModuleSnapshot};
 use crate::suggestions::{self, Suggestion};
 use anyhow::{bail, Context, Result};
@@ -48,10 +49,80 @@ fn run_with_selection(selected_slugs: Option<&[&str]>) -> Result<()> {
     result
 }
 
-#[expect(
-    clippy::too_many_lines,
-    reason = "one linear audit sequence; each step publishes the snapshot the HUD reads"
-)]
+/// Everything a snapshot is built from while an audit runs.
+struct Progress<'a> {
+    modules: &'a [Box<dyn modules::AuditModule>],
+    selected: &'a [usize],
+    states: Vec<String>,
+    health: HealthReport,
+    reports: Vec<String>,
+    suggestions: Vec<Suggestion>,
+    suggestions_path: Option<String>,
+    summary_path: Option<String>,
+}
+
+impl Progress<'_> {
+    fn publish(&self, message: &str) {
+        let completed_count = self
+            .states
+            .iter()
+            .filter(|state| state.as_str() == "complete")
+            .count();
+        let snapshot = AuditSnapshot {
+            schema_version: 1,
+            application: "omniscient",
+            state: if self.summary_path.is_some() {
+                "complete"
+            } else {
+                "running"
+            }
+            .to_string(),
+            updated_at: Local::now().to_rfc3339(),
+            host: std::env::var("HOSTNAME").unwrap_or_else(|_| "unknown-host".to_string()),
+            selected_count: self.selected.len(),
+            completed_count,
+            health: Some(HealthSnapshot {
+                score: self.health.score,
+                notes: self.health.notes.clone(),
+            }),
+            modules: self
+                .modules
+                .iter()
+                .enumerate()
+                .map(|(index, module)| ModuleSnapshot {
+                    name: module.name().to_string(),
+                    slug: module.slug().to_string(),
+                    state: self
+                        .states
+                        .get(index)
+                        .cloned()
+                        .unwrap_or_else(|| "unknown".to_string()),
+                    selected: self.selected.contains(&index),
+                    requires_sudo: module.requires_sudo(),
+                })
+                .collect(),
+            reports: self.reports.clone(),
+            suggestions: self.suggestions.clone(),
+            suggestions_path: self.suggestions_path.clone(),
+            summary_path: self.summary_path.clone(),
+            error: None,
+            message: message.to_string(),
+        };
+        let _ = snapshot::write(&snapshot);
+    }
+
+    fn running_names(&self) -> String {
+        self.states
+            .iter()
+            .enumerate()
+            .filter(|(_, state)| state.as_str() == "running")
+            .filter_map(|(index, _)| self.modules.get(index))
+            .map(|module| module.name().to_uppercase())
+            .collect::<Vec<_>>()
+            .join(" · ")
+    }
+}
+
 fn run_audit(selected_slugs: Option<&[&str]>) -> Result<()> {
     let modules = modules::all_modules();
     let selected = match selected_slugs {
@@ -75,106 +146,125 @@ fn run_audit(selected_slugs: Option<&[&str]>) -> Result<()> {
     if selected.is_empty() {
         bail!("no audit modules matched the requested selection");
     }
-    let health = health::compute_selected(&modules, &selected);
     let timestamp = Local::now().format("%Y-%m-%d_%H-%M-%S").to_string();
     let base_dir = paths::report_root();
     let root = base_dir.join(format!("full_system_audit-{timestamp}"));
     std::fs::create_dir_all(&root)
         .with_context(|| format!("creating report directory {}", root.display()))?;
 
-    let mut states = vec!["idle".to_string(); modules.len()];
-    let mut reports = Vec::new();
+    let health = health::compute_selected(&modules, &selected);
     let suggestions = suggestions::from_health(&health);
     let suggestions_path = suggestions::write_report(&root, &timestamp, &health, &suggestions)?;
-    publish(
+    let mut progress = Progress {
+        modules: &modules,
+        selected: &selected,
+        states: vec!["idle".to_string(); modules.len()],
+        health,
+        reports: Vec::new(),
+        suggestions,
+        suggestions_path: Some(suggestions_path.display().to_string()),
+        summary_path: None,
+    };
+    for index in &selected {
+        progress.states[*index] = "queued".to_string();
+    }
+    progress.publish(if selected_slugs.is_some() {
+        "PACKAGE SCAN QUEUED"
+    } else {
+        "FULL SYSTEM AUDIT QUEUED"
+    });
+
+    let workers = runner::workers();
+    let mut finished = 0;
+    let mut report_order = Vec::new();
+    runner::run(
         &modules,
-        &states,
-        &health,
-        &reports,
-        &suggestions,
-        Some(suggestions_path.display().to_string()),
-        None,
-        if selected_slugs.is_some() {
-            "PACKAGE SCAN QUEUED"
-        } else {
-            "FULL SYSTEM AUDIT QUEUED"
-        },
-        None,
         &selected,
+        &root,
+        &timestamp,
+        workers,
+        |event| match event {
+            runner::Event::Started(index) => {
+                progress.states[index] = "running".to_string();
+                let running = progress.running_names();
+                progress.publish(&format!(
+                    "[{finished}/{}] SCANNING {running}",
+                    selected.len()
+                ));
+            }
+            runner::Event::Finished(index, result) => {
+                finished += 1;
+                match result {
+                    Ok(report_path) => {
+                        progress.states[index] = "complete".to_string();
+                        report_order.push((index, report_path.display().to_string()));
+                        report_order.sort();
+                        progress.reports =
+                            report_order.iter().map(|(_, path)| path.clone()).collect();
+                        progress.publish(&format!(
+                            "[{finished}/{}] COMPLETE / {}",
+                            selected.len(),
+                            report_path.display()
+                        ));
+                    }
+                    Err(error) => {
+                        progress.states[index] = "failed".to_string();
+                        progress.publish(&format!("FAILED / {} / {error}", modules[index].name()));
+                    }
+                }
+            }
+        },
     );
 
-    for (position, index) in selected.iter().copied().enumerate() {
-        let module = &modules[index];
-        states[index] = "running".to_string();
-        publish(
-            &modules,
-            &states,
-            &health,
-            &reports,
-            &suggestions,
-            Some(suggestions_path.display().to_string()),
-            None,
-            &format!(
-                "[{}/{}] SCANNING {}",
-                position + 1,
-                selected.len(),
-                module.name().to_uppercase()
-            ),
-            None,
-            &selected,
-        );
+    refine_with_signals(&mut progress, &base_dir, &root, &timestamp)?;
+    write_summary(&progress, &root, &timestamp)?;
+    progress.summary_path = Some(root.join("SUMMARY.md").display().to_string());
+    progress.publish(if selected_slugs.is_some() {
+        "PACKAGE SCAN COMPLETE"
+    } else {
+        "AUDIT COMPLETE"
+    });
+    Ok(())
+}
 
-        let dir = root.join(format!("{}-{timestamp}", module.slug()));
-        let result = std::fs::create_dir_all(&dir)
-            .and_then(|()| module.run(&dir).map_err(std::io::Error::other));
-        match result {
-            Ok(()) => {
-                let report_path = dir.join(module.report_filename());
-                reports.push(report_path.display().to_string());
-                states[index] = "complete".to_string();
-                publish(
-                    &modules,
-                    &states,
-                    &health,
-                    &reports,
-                    &suggestions,
-                    Some(suggestions_path.display().to_string()),
-                    None,
-                    &format!("COMPLETE / {}", report_path.display()),
-                    None,
-                    &selected,
-                );
-            }
-            Err(error) => {
-                states[index] = "failed".to_string();
-                publish(
-                    &modules,
-                    &states,
-                    &health,
-                    &reports,
-                    &suggestions,
-                    Some(suggestions_path.display().to_string()),
-                    None,
-                    &format!("FAILED / {} / {}", module.name(), error),
-                    None,
-                    &selected,
-                );
-            }
-        }
-    }
+/// Folds the deep-signals module's findings into health and suggestions and
+/// writes the change report. A run without that module is left unchanged.
+fn refine_with_signals(
+    progress: &mut Progress<'_>,
+    base_dir: &Path,
+    root: &Path,
+    timestamp: &str,
+) -> Result<()> {
+    let signals_dir = root.join(format!("signals-{timestamp}"));
+    let Some(signals) = crate::signals::load(&signals_dir.join(crate::signals::SIGNALS_JSON))
+    else {
+        return Ok(());
+    };
+    health::apply_signals(&mut progress.health, &signals.findings);
+    let mut refined = suggestions::from_health(&progress.health);
+    refined.extend(suggestions::from_findings(&signals.findings));
+    suggestions::write_report(root, timestamp, &progress.health, &refined)?;
+    progress.suggestions = refined;
+    let changes = crate::changes::write(base_dir, root, &signals)?;
+    progress.reports.push(changes.display().to_string());
+    Ok(())
+}
 
-    let relative_refs = reports
+fn write_summary(progress: &Progress<'_>, root: &Path, timestamp: &str) -> Result<()> {
+    let relative_refs = progress
+        .reports
         .iter()
         .filter_map(|path| {
             let absolute = Path::new(path);
             let name = absolute
                 .parent()
+                .filter(|parent| *parent != root)
                 .and_then(Path::file_name)
                 .and_then(|name| name.to_str())
-                .unwrap_or("module")
+                .unwrap_or("changes since last audit")
                 .to_string();
             let relative = absolute
-                .strip_prefix(&root)
+                .strip_prefix(root)
                 .ok()?
                 .to_string_lossy()
                 .to_string();
@@ -185,82 +275,5 @@ fn run_audit(selected_slugs: Option<&[&str]>) -> Result<()> {
         .iter()
         .map(|(name, path)| (name.as_str(), path.as_str()))
         .collect::<Vec<_>>();
-    report::write_summary(&root, &timestamp, &health, &summary_refs)?;
-    let summary_path = root.join("SUMMARY.md").display().to_string();
-    publish(
-        &modules,
-        &states,
-        &health,
-        &reports,
-        &suggestions,
-        Some(suggestions_path.display().to_string()),
-        Some(summary_path),
-        if selected_slugs.is_some() {
-            "PACKAGE SCAN COMPLETE"
-        } else {
-            "AUDIT COMPLETE"
-        },
-        None,
-        &selected,
-    );
-    Ok(())
-}
-
-#[allow(clippy::too_many_arguments)]
-fn publish(
-    modules: &[Box<dyn modules::AuditModule>],
-    states: &[String],
-    health: &HealthReport,
-    reports: &[String],
-    suggestions: &[Suggestion],
-    suggestions_path: Option<String>,
-    summary_path: Option<String>,
-    message: &str,
-    error: Option<String>,
-    selected: &[usize],
-) {
-    let completed_count = states
-        .iter()
-        .filter(|state| state.as_str() == "complete")
-        .count();
-    let snapshot = AuditSnapshot {
-        schema_version: 1,
-        application: "omniscient",
-        state: if error.is_some() {
-            "error".to_string()
-        } else if summary_path.is_some() {
-            "complete".to_string()
-        } else {
-            "running".to_string()
-        },
-        updated_at: Local::now().to_rfc3339(),
-        host: std::env::var("HOSTNAME").unwrap_or_else(|_| "unknown-host".to_string()),
-        selected_count: selected.len(),
-        completed_count,
-        health: Some(HealthSnapshot {
-            score: health.score,
-            notes: health.notes.clone(),
-        }),
-        modules: modules
-            .iter()
-            .enumerate()
-            .map(|(index, module)| ModuleSnapshot {
-                name: module.name().to_string(),
-                slug: module.slug().to_string(),
-                state: states
-                    .get(index)
-                    .cloned()
-                    .unwrap_or_else(|| "unknown".to_string()),
-                selected: selected.contains(&index),
-                requires_sudo: module.requires_sudo(),
-            })
-            .collect(),
-        reports: reports.to_vec(),
-        suggestions: suggestions.to_vec(),
-        suggestions_path,
-        summary_path,
-        error,
-        message: message.to_string(),
-    };
-    let _ = snapshot::write(&snapshot);
+    report::write_summary(root, timestamp, &progress.health, &summary_refs)
 }

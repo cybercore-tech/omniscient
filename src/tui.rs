@@ -469,31 +469,39 @@ fn worker(selected: &[usize], full: bool, tx: &Sender<WorkerMessage>) {
         return;
     }
 
-    let mut reports: Vec<(String, String)> = Vec::new();
-    for (position, index) in selected.iter().copied().enumerate() {
-        let Some(module) = modules.get(index) else {
-            continue;
-        };
-        let _ = tx.send(WorkerMessage::Started(index));
-        let _ = tx.send(WorkerMessage::Log(format!(
-            "[{}/{}] SCANNING {}",
-            position + 1,
-            selected.len(),
-            module.name().to_uppercase()
-        )));
-        let dir = root.join(format!("{}-{timestamp}", module.slug()));
-        let result = std::fs::create_dir_all(&dir)
-            .and_then(|()| module.run(&dir).map_err(std::io::Error::other));
-        match result {
-            Ok(()) => {
+    let workers = crate::runner::workers();
+    let _ = tx.send(WorkerMessage::Log(format!(
+        "RUNNING {} MODULES ON {workers} WORKERS",
+        selected.len()
+    )));
+    let mut done = Vec::new();
+    crate::runner::run(
+        &modules,
+        selected,
+        &root,
+        &timestamp,
+        workers,
+        |event| match event {
+            crate::runner::Event::Started(index) => {
+                let _ = tx.send(WorkerMessage::Started(index));
+                if let Some(module) = modules.get(index) {
+                    let _ = tx.send(WorkerMessage::Log(format!(
+                        "SCANNING {}",
+                        module.name().to_uppercase()
+                    )));
+                }
+            }
+            crate::runner::Event::Finished(index, Ok(absolute)) => {
+                let Some(module) = modules.get(index) else {
+                    return;
+                };
                 let relative = format!(
                     "{}-{}/{}",
                     module.slug(),
                     timestamp,
                     module.report_filename()
                 );
-                let absolute = dir.join(module.report_filename());
-                reports.push((module.name().to_string(), relative.clone()));
+                done.push((index, module.name().to_string(), relative));
                 let _ = tx.send(WorkerMessage::Completed {
                     index,
                     report_path: absolute.display().to_string(),
@@ -503,14 +511,18 @@ fn worker(selected: &[usize], full: bool, tx: &Sender<WorkerMessage>) {
                     absolute.display()
                 )));
             }
-            Err(error) => {
-                let _ = tx.send(WorkerMessage::Failed {
-                    index,
-                    error: error.to_string(),
-                });
+            crate::runner::Event::Finished(index, Err(error)) => {
+                let _ = tx.send(WorkerMessage::Failed { index, error });
             }
-        }
-    }
+        },
+    );
+    done.sort();
+    let mut reports = done
+        .into_iter()
+        .map(|(_, name, relative)| (name, relative))
+        .collect::<Vec<_>>();
+
+    let health = apply_deep_signals(health, &root, &base_dir, &timestamp, full, &mut reports, tx);
 
     let report_refs = reports
         .iter()
@@ -1062,4 +1074,40 @@ fn hostname() -> String {
 /// Index into an eight-frame animation for a tick counter.
 fn pulse_frame(tick: u64) -> usize {
     usize::try_from(tick % 8).unwrap_or(0)
+}
+
+/// Folds the deep-signals findings into health and, for a full audit, writes
+/// the change report. A run without the signals module returns `health` as is.
+fn apply_deep_signals(
+    mut health: HealthReport,
+    root: &std::path::Path,
+    base_dir: &std::path::Path,
+    timestamp: &str,
+    full: bool,
+    reports: &mut Vec<(String, String)>,
+    tx: &Sender<WorkerMessage>,
+) -> HealthReport {
+    if let Some(signals) = crate::signals::load(
+        &root
+            .join(format!("signals-{timestamp}"))
+            .join(crate::signals::SIGNALS_JSON),
+    ) {
+        health::apply_signals(&mut health, &signals.findings);
+        let _ = tx.send(WorkerMessage::Health(health.clone()));
+        let _ = tx.send(WorkerMessage::Log(format!(
+            "DEEP SIGNALS / {} findings, score {}/100",
+            signals.findings.len(),
+            health.score
+        )));
+        if full {
+            if let Ok(path) = crate::changes::write(base_dir, root, &signals) {
+                reports.push((
+                    "Changes since last audit".to_string(),
+                    path.file_name()
+                        .map_or_else(String::new, |n| n.to_string_lossy().into_owned()),
+                ));
+            }
+        }
+    }
+    health
 }

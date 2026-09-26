@@ -45,15 +45,30 @@ pub fn program() -> &'static str {
 /// privileged child used by graphical/HUD runs.
 #[must_use]
 pub fn is_privileged() -> bool {
-    std::env::var("OMNISCIENT_PRIVILEGED").is_ok_and(|value| value == "1")
-        && command_output(ID, &["-u"]).is_ok_and(|uid| uid == "0")
+    // Asked hundreds of times per audit; the answer cannot change within a
+    // process, so run `id -u` once.
+    static PRIVILEGED: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
+    *PRIVILEGED.get_or_init(|| {
+        std::env::var("OMNISCIENT_PRIVILEGED").is_ok_and(|value| value == "1")
+            && command_output(ID, &["-u"]).is_ok_and(|uid| uid == "0")
+    })
 }
 
+/// Arguments for running one command through the elevation program without
+/// ever prompting: `sudo -n` succeeds only with a credential the dashboard
+/// already cached and otherwise fails at once. `pkexec` always prompts, so
+/// per-command pkexec is refused (`None`); graphical runs elevate the whole
+/// audit once instead.
 #[must_use]
-pub fn args<'a>(command: &'a str, args: &[&'a str]) -> Vec<&'a str> {
-    let mut elevated = vec![command];
-    elevated.extend_from_slice(args);
-    elevated
+pub fn non_interactive_args<'a>(command: &'a str, args: &[&'a str]) -> Option<Vec<&'a str>> {
+    match backend() {
+        Backend::Sudo => {
+            let mut elevated = vec!["-n", command];
+            elevated.extend_from_slice(args);
+            Some(elevated)
+        }
+        Backend::Pkexec => None,
+    }
 }
 
 #[must_use]
@@ -270,5 +285,18 @@ pub fn label() -> &'static str {
     match backend() {
         Backend::Sudo => "SUDO",
         Backend::Pkexec => "POLKIT",
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    #[test]
+    fn elevation_from_a_module_never_prompts() {
+        if std::env::var_os("OMNISCIENT_AUTH").is_some() {
+            return;
+        }
+        let args = super::non_interactive_args("/usr/bin/btrfs", &["device", "stats", "/"])
+            .expect("sudo backend");
+        assert_eq!(args, vec!["-n", "/usr/bin/btrfs", "device", "stats", "/"]);
     }
 }

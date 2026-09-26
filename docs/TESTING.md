@@ -82,6 +82,9 @@ The harness (`tests/plugin/shell.qml`) checks, among 54 assertions:
   `https:` links require confirmation;
 - report paths outside Omniscient, relative paths and `..` traversal are refused;
 - package categories filter correctly, and a failing audit surfaces its stderr;
+- an idle panel performs **zero** snapshot reads (file watching, not
+  polling), and fixtures are installed the way the backend publishes them
+  (temporary file, then rename);
 - a soak rewrites the snapshot every 3 s with the largest report open.
 
 The script then fails on any runtime QML warning from the plugin, a peak RSS
@@ -105,6 +108,12 @@ deliberately broken to confirm a test fails:
   long lines not capped, chunk code state ignored, HTML not escaped, list cap
   removed, traversal check removed — **all caught**.
 
+- [x] Later additions: file watchers removed (changes missed), SMART, PSI,
+  boot, btrfs, taint, battery, crash, restart-loop and timer assessors each
+  have tests built from real output of the development laptop, including two
+  false positives found on real data (orderly shutdowns whose journal closed
+  before "Journal stopped", and locale archives counted as libraries).
+
 Two early survivors (unbounded `cat` and a line cap whose notice still
 printed) led to the peak-memory limit and the delegate/stall assertions.
 
@@ -116,6 +125,9 @@ Some behavior depends on the machine and stays out of the default suite:
 cargo test --release -- --ignored real_omarchy --nocapture
 ```
 
-This runs the real Omarchy module. On the development laptop it turns the
+`cargo test --release -- --ignored real_deep_signals --nocapture` runs Deep
+Signals on the host, and `real_section_timings` times each check.
+
+The Omarchy host test runs the real Omarchy module. On the development laptop it turns the
 74.8 MB `omarchy-debug` output into a 261 KB section that states how many
 bytes were omitted.

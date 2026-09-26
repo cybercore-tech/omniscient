@@ -56,6 +56,9 @@ pub struct Stream {
     pub bytes: Vec<u8>,
     /// Every byte the command wrote, retained or not.
     pub total: u64,
+    /// Every newline the command wrote, retained or not, so a caller can
+    /// count lines without keeping them.
+    pub lines: u64,
 }
 
 impl Stream {
@@ -173,6 +176,12 @@ impl Reader {
                     Ok(read) => {
                         let mut stream = shared.lock().unwrap_or_else(PoisonError::into_inner);
                         stream.total += read as u64;
+                        #[expect(
+                            clippy::naive_bytecount,
+                            reason = "a newline count does not justify a dependency"
+                        )]
+                        let newlines = buffer[..read].iter().filter(|byte| **byte == b'\n').count();
+                        stream.lines += newlines as u64;
                         let room = retain.saturating_sub(stream.bytes.len());
                         stream.bytes.extend_from_slice(&buffer[..read.min(room)]);
                     }
@@ -192,6 +201,24 @@ impl Reader {
         let stream = self.stream.lock().unwrap_or_else(PoisonError::into_inner);
         stream.clone()
     }
+}
+
+/// Runs `executable` with root privileges, never prompting: directly when
+/// this process is already the elevated audit child, otherwise through
+/// `sudo -n`, which only uses a credential the dashboard already cached.
+///
+/// # Errors
+///
+/// Returns an error when no prompt-free elevation is available or the
+/// command cannot be started.
+pub fn run_elevated(executable: &Path, args: &[&str], limits: Limits) -> std::io::Result<Output> {
+    if crate::elevation::is_privileged() {
+        return run(executable, args, limits);
+    }
+    let executable = executable.to_string_lossy();
+    let elevated = crate::elevation::non_interactive_args(&executable, args)
+        .ok_or_else(|| std::io::Error::other("needs the elevated audit"))?;
+    run(Path::new(crate::elevation::program()), &elevated, limits)
 }
 
 /// Removes terminal control sequences and control characters, keeping
@@ -389,7 +416,19 @@ mod tests {
         assert!(out.success());
         assert_eq!(out.stdout.bytes.len(), 1024);
         assert_eq!(out.stdout.total, 5_000_000);
+        assert_eq!(out.stdout.lines, 0);
         assert!(out.stdout.truncated());
+    }
+
+    #[test]
+    fn lines_are_counted_even_when_not_retained() {
+        let limits = Limits {
+            timeout: Duration::from_secs(30),
+            retain_bytes: 16,
+        };
+        let out = run(Path::new("/usr/bin/seq"), &["1", "100000"], limits).expect("seq runs");
+        assert_eq!(out.stdout.lines, 100_000);
+        assert_eq!(out.stdout.bytes.len(), 16);
     }
 
     #[test]

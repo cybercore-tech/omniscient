@@ -6,6 +6,31 @@ All notable changes to Omniscient are documented here.
 
 ### Added
 
+- **Deep Signals** module (`src/signals.rs`, report `signals.md` plus
+  `signals.json`): update hygiene (reboot needed, programs on replaced shared
+  libraries, unmerged `.pacnew`), PSI pressure, crash trends, restart loops and
+  failing timers, unclean shutdowns and per-boot errors, Btrfs device errors /
+  scrub age / metadata, NVMe and ATA wear and temperature, thermal throttling,
+  decoded kernel taint, battery wear with trend, Cybercore ecosystem unit
+  health, and omarchy-shell memory watch. Findings feed health (capped 45
+  points) and manual fix-center suggestions.
+- `CHANGES.md` after each full audit: findings new / changed / resolved and
+  inventory changes since the previous audit (`src/changes.rs`).
+- Modules run on a 4-worker pool (`src/runner.rs`, `OMNISCIENT_WORKERS`);
+  `pacman -Qkk` is split across workers and intentionally never cached.
+- The HUD watches the snapshot file (inotify via Quickshell `FileView`, no
+  preload, bounded reads) instead of polling; an idle panel reads nothing.
+
+### Fixed
+
+- Elevated commands inside modules could open password prompts (per-command
+  `sudo` without `-n`, or `pkexec`). They now never prompt.
+- `failed systemd units: ●`: the health check parsed systemctl's bullet
+  column as the unit name; it now uses `--plain`.
+- `is_privileged()` ran `id -u` on every call; it is now computed once.
+
+### Added
+
 - Cybercore scrollbars (`HudScrollBar.qml`) on every scrollable HUD view: the
   panel body, report index, report view, full report view, suggestions, fix
   queue and fix details. Shown only when content overflows.

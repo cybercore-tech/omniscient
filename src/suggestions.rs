@@ -30,6 +30,62 @@ pub fn from_health(health: &HealthReport) -> Vec<Suggestion> {
         .collect()
 }
 
+/// Manual-guidance suggestions for deep-signal findings above `info`.
+/// They never offer an automatic repair; the repair allowlist is unchanged.
+#[must_use]
+pub fn from_findings(findings: &[crate::signals::Finding]) -> Vec<Suggestion> {
+    use crate::signals::Severity;
+    findings
+        .iter()
+        .filter(|finding| finding.severity > Severity::Info)
+        .map(|finding| Suggestion {
+            id: format!("signal:{}", finding.key),
+            severity: match finding.severity {
+                Severity::Urgent => "urgent",
+                Severity::Warning => "warning",
+                _ => "attention",
+            }
+            .to_owned(),
+            title: finding.title.clone(),
+            detail: finding.detail.clone(),
+            explanation: "Found by Omniscient's deep signals. Inspect it with the command below before changing anything; Omniscient does not repair these automatically.".to_owned(),
+            command: finding.command.clone(),
+            manual_steps: finding
+                .command
+                .split("; ")
+                .filter(|step| !step.trim().is_empty())
+                .map(str::to_owned)
+                .collect(),
+            man_url: man_url_for(&finding.command),
+            docs_url: if finding.docs_url.is_empty() {
+                "https://wiki.archlinux.org/title/System_maintenance".to_owned()
+            } else {
+                finding.docs_url.clone()
+            },
+            auto_fix: false,
+            auto_fix_reason: "Deep-signal findings are guidance only; no automatic repair is offered.".to_owned(),
+            requires_auth: finding.command.starts_with("sudo "),
+        })
+        .collect()
+}
+
+/// Arch manual page for the first program in a command line.
+fn man_url_for(command: &str) -> String {
+    let program = command
+        .split_whitespace()
+        .find(|word| *word != "sudo")
+        .unwrap_or_default();
+    if !program.is_empty()
+        && program
+            .bytes()
+            .all(|b| b.is_ascii_lowercase() || b.is_ascii_digit() || b == b'-')
+    {
+        format!("https://man.archlinux.org/man/{program}")
+    } else {
+        "https://man.archlinux.org/".to_owned()
+    }
+}
+
 /// Writes `SUGGESTIONS.md` for the audit in `dir` and returns its path.
 ///
 /// # Errors
@@ -275,5 +331,56 @@ mod tests {
         let suggestions = from_health(&health);
         assert_eq!(suggestions[0].severity, "urgent");
         assert!(!suggestions[0].auto_fix);
+    }
+}
+
+#[cfg(test)]
+mod finding_tests {
+    use super::{from_findings, man_url_for};
+    use crate::signals::{Finding, Severity};
+
+    #[test]
+    fn findings_become_manual_only_suggestions() {
+        let findings = vec![
+            Finding {
+                key: "pacnew".into(),
+                severity: Severity::Watch,
+                title: "t".into(),
+                detail: "d".into(),
+                command: "pacdiff -o".into(),
+                docs_url: "https://wiki.archlinux.org/title/Pacman/Pacnew_and_Pacsave".into(),
+            },
+            Finding {
+                key: "info".into(),
+                severity: Severity::Info,
+                title: "t".into(),
+                detail: "d".into(),
+                command: String::new(),
+                docs_url: String::new(),
+            },
+        ];
+        let suggestions = from_findings(&findings);
+        assert_eq!(suggestions.len(), 1, "info findings are not suggestions");
+        assert_eq!(suggestions[0].id, "signal:pacnew");
+        assert_eq!(suggestions[0].severity, "attention");
+        assert!(!suggestions[0].auto_fix);
+        assert_eq!(
+            suggestions[0].man_url,
+            "https://man.archlinux.org/man/pacdiff"
+        );
+    }
+
+    #[test]
+    fn man_urls_skip_sudo_and_reject_odd_programs() {
+        assert_eq!(
+            man_url_for("sudo btrfs scrub start /"),
+            "https://man.archlinux.org/man/btrfs"
+        );
+        assert_eq!(
+            man_url_for("grep . /sys/x"),
+            "https://man.archlinux.org/man/grep"
+        );
+        assert_eq!(man_url_for("$(evil)"), "https://man.archlinux.org/");
+        assert_eq!(man_url_for(""), "https://man.archlinux.org/");
     }
 }

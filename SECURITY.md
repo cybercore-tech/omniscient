@@ -48,6 +48,21 @@ bounded independently:
   capped, an unchanged snapshot causes no UI updates, and reports are shown
   through virtualized list views that render only the on-screen part.
 
+## Deep Signals
+
+Deep Signals is read-only. It reads `/proc`, `/sys` and bounded command
+output (`systemctl show`, `journalctl`, `coredumpctl`, `smartctl -j`,
+`btrfs device stats|scrub status|filesystem usage|subvolume list`, `ss`,
+`pacman -Q`). It writes only its report, `signals.json`, `CHANGES.md`, and
+two small trend files under `<report root>/history/` (battery capacity and
+omarchy-shell memory, at most 500 lines each, parsed defensively). Its
+suggestions are manual guidance; the repair allowlist is unchanged.
+
+Elevation never prompts from inside a module: the elevated HUD child runs
+commands directly, and otherwise only `sudo -n` is used, which fails at once
+unless the dashboard's single `sudo -v` credential is cached. Per-command
+`pkexec` is never used.
+
 ## Repair actions
 
 Repair actions are deliberately narrow. The panel requires an explicit user

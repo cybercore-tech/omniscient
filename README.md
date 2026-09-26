@@ -10,7 +10,8 @@ a readable, repeatable report.
 
 It began as a fish-shell cyberdeck with an ASCII HUD, a scanning animation,
 and an `fzf` module picker. The Rust release keeps that spirit while adding a
-structured 17-module registry across 10 conservative diagnostic domains, live
+structured 18-module registry across 10 conservative diagnostic domains plus
+Deep Signals, parallel scanning, live
 progress, health scoring, capability detection, privilege handling, and linked
 Markdown reports.
 
@@ -119,7 +120,9 @@ omniscient --packages
 snapshot/report contract used by the Omarchy HUD. It is deliberately separate
 from `--hud` because package verification can be the slowest part of a scan on
 large installations, especially when `pacman -Qkk` walks many installed
-files. The command is read-only: it inventories package metadata and checks
+files. `pacman -Qkk` is split across the parallel workers (roughly 3-4× faster)
+and is deliberately never cached: it exists to catch files changed outside
+pacman, which a cache keyed on the package database would hide. The command is read-only: it inventories package metadata and checks
 local package files, but it does not install, remove, upgrade, or downgrade
 anything.
 
@@ -152,8 +155,12 @@ user and every distribution:
 select privileged modules → dashboard pauses → sudo -v → dashboard resumes
 ```
 
-Only the hardware, storage, Btrfs snapshot, and kernel-log modules request
-elevated access. If authorization is canceled, the dashboard returns without
+Only the hardware, storage, Btrfs snapshot, kernel-log, and Deep Signals
+modules request elevated access. Modules never prompt on their own: inside
+the elevated HUD child they run directly, and in the dashboard they use
+`sudo -n`, which succeeds only with the credential cached by the single
+`sudo -v` above. A check that cannot elevate says "needs the elevated audit"
+instead of asking again. If authorization is canceled, the dashboard returns without
 starting the audit.
 
 Users with a graphical Polkit agent may opt in from their own shell:
@@ -193,6 +200,34 @@ does not impose an Omarchy or desktop-specific default on other users.
 - ⟦RS⟧ **Reliability Signals** — kernel warnings, hardware errors, coredumps, and sensors
 - ⟦PP⟧ **Performance Pulse** — load, memory, VM pressure, and boot latency
 - ⟦OS⟧ **Omarchy Surface** — Omarchy, Hyprland, Quickshell, and shell diagnostics
+- ⟦DS⟧ **Deep Signals** — the checks most audit tools skip (below)
+
+### Deep Signals
+
+One module, twelve checks, each with a documented threshold. Findings are
+listed first in `signals.md`, lower the health score (capped at 45 points),
+and appear in the fix center as manual guidance with an inspect command, a
+manual page, and documentation; none offers an automatic repair.
+
+| Check | What it looks for |
+| --- | --- |
+| Update hygiene | running kernel whose modules an upgrade removed (reboot needed), programs still mapping replaced shared libraries, unmerged `.pacnew`/`.pacsave` files |
+| Pressure (PSI) | sustained CPU, memory and I/O stall time from `/proc/pressure` |
+| Crash trends | core dumps of the last 7 days grouped by program, with signals |
+| Service health | restart loops (`NRestarts`), timers whose last run failed, failed and masked units, system and user |
+| Boot history | recent boots that ended without an orderly shutdown, and error counts per boot |
+| Btrfs health | device error counters, scrub age, metadata fill, snapshot count |
+| Drive wear | NVMe endurance used, spare, media errors, critical warnings; ATA reallocated, pending and uncorrectable sectors, SSD life; temperature |
+| Thermal | CPU throttle time since boot, thermal-zone temperatures |
+| Kernel taint | decoded taint flags; oops, machine checks, bad pages and soft lockups are findings |
+| Battery wear | capacity against design, with a trend from a small history file |
+| Cybercore ecosystem | systemd state and last output of SigilWard, Undertow, Argus, SentryGrid, Chronicle, VortexWall, WraithFlow, GhostPort, ApexDaemon |
+| Shell watch | omarchy-shell memory and growth rate, and plugin warnings this boot |
+
+Every full audit that includes Deep Signals also writes `CHANGES.md`: findings
+that appeared, changed severity or were resolved, and inventory changes
+(listening sockets, installed packages, failed and masked units, crashing
+programs, unmerged configs, kernel taint) since the previous audit.
 
 The capability matrix marks tools as available, missing, optional, or
 privileged before a scan starts. Missing optional tools are recorded as
@@ -221,7 +256,7 @@ Flatpak versions, Snap versions, and Omarchy package information in separate
 sections so a long inventory remains auditable.
 
 The Omarchy HUD adds a `PACKAGE SCAN` action beside `RUN FULL AUDIT`. A full
-audit selects the 16 operational modules. Package Integrity is intentionally
+audit selects the 17 operational modules, run four at a time. Package Integrity is intentionally
 excluded from that default pass. A package scan selects only Package Integrity,
 marks the other modules idle, updates the live snapshot as the package pass
 progresses, and writes a normal Markdown report plus `SUMMARY.md`. The report
@@ -241,7 +276,8 @@ The health score starts at `100` and is adjusted using real signals:
 
 - missing required tools;
 - failed systemd units;
-- disks reporting SMART health failure.
+- disks reporting SMART health failure;
+- Deep Signals findings (watch 2, warning 7, urgent 15 points; 45 at most).
 
 The score is a diagnostic signal, not a security certification or a warranty
 that every system component is healthy.
@@ -308,7 +344,11 @@ src/main.rs        interactive entry point
 src/tui.rs         interactive dashboard, input, worker thread, and progress state
 src/headless.rs    full and focused in-panel runners, including --packages,
                    plus snapshot publishing
-src/modules.rs     AuditModule trait and 17 audit modules across 10 domains
+src/modules.rs     AuditModule trait and 18 audit modules
+src/runner.rs      parallel module runner (4 workers, OMNISCIENT_WORKERS 1-8)
+src/signals.rs     Deep Signals: collectors plus pure, tested assessors
+src/changes.rs     CHANGES.md: diff against the previous audit
+src/history.rs     bounded trend files (battery, shell memory)
 src/elevation.rs   sudo default and pkexec opt-in backend selection
 src/health.rs      health scoring from system signals
 src/paths.rs       XDG report-path resolution and per-user override
