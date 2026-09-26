@@ -183,7 +183,9 @@ Item {
     root.selectedReport = value
     if (!root.isPackageReport(value)) root.packageCategory = "ALL"
     root.reportText = "LOADING REPORT..."
-    reportReader.running = true
+    reportReader.running = false
+    reportReaderStartTimer.start()
+    reportRevealTimer.start()
   }
 
   function isPackageReport(path) {
@@ -468,6 +470,20 @@ Item {
     onTriggered: root.helpLaunchLocked = false
   }
 
+  Timer {
+    id: reportRevealTimer
+    interval: 80
+    repeat: false
+    onTriggered: auditBodyScroll.contentY = Math.max(0, auditBodyScroll.contentHeight - auditBodyScroll.height)
+  }
+
+  Timer {
+    id: reportReaderStartTimer
+    interval: 1
+    repeat: false
+    onTriggered: reportReader.running = true
+  }
+
   PanelWindow {
     id: panelWindow
     visible: root.opened
@@ -723,11 +739,16 @@ Item {
               }
               MouseArea {
                 anchors.fill: parent
+                z: 10
                 hoverEnabled: true
+                preventStealing: true
+                acceptedButtons: Qt.NoButton
                 cursorShape: root.reportForModule(String(modelData.slug || "")).length ? Qt.PointingHandCursor : Qt.ArrowCursor
                 onEntered: parent.hovered = true
                 onExited: parent.hovered = false
-                onClicked: root.openModuleReport(String(modelData.slug || ""))
+              }
+              TapHandler {
+                onTapped: root.openModuleReport(String(modelData.slug || ""))
               }
             }
           }
