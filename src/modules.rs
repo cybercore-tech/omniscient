@@ -1,5 +1,5 @@
 use anyhow::{Context, Result};
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, HashSet};
 use std::fs::File;
 use std::io::Write;
 use std::path::Path;
@@ -794,16 +794,22 @@ fn package_repository_report() -> String {
         }
     }
 
+    let updates = pacman_update_names();
     let mut categories: BTreeMap<String, Vec<String>> = BTreeMap::new();
     for (name, version) in installed {
         let category = repositories
             .get(&name)
             .cloned()
             .unwrap_or_else(|| "AUR / FOREIGN".to_string());
+        let status = if updates.contains(&name) {
+            "UPDATE AVAILABLE"
+        } else {
+            "CURRENT"
+        };
         categories
             .entry(category)
             .or_default()
-            .push(format!("{name} {version}"));
+            .push(format!("{name} {version} — {status}"));
     }
 
     let mut report = String::new();
@@ -839,6 +845,18 @@ fn package_repository_report() -> String {
         report.push('\n');
     }
     report
+}
+
+fn pacman_update_names() -> HashSet<String> {
+    command_stdout("pacman", &["-Qu"])
+        .map(|output| {
+            output
+                .lines()
+                .filter_map(|line| line.split_whitespace().next())
+                .map(str::to_string)
+                .collect()
+        })
+        .unwrap_or_default()
 }
 
 fn package_repository_category(repository: &str) -> String {

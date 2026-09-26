@@ -10,6 +10,10 @@ it.
 
 - A normal audit is read-only with respect to the operating system. It writes
   only its own Markdown reports and an atomic local JSON snapshot.
+- The focused `omniscient --packages` pass is also read-only. It runs package
+  inventory, update metadata, orphan detection, foreign-package discovery,
+  and file-integrity inspection; it does not invoke package installation,
+  removal, upgrade, downgrade, repository modification, or keyring changes.
 - The terminal mode uses `sudo` only for fixed inspection commands that need
   device or kernel visibility.
 - The graphical HUD uses one explicit `pkexec` authorization for a single
@@ -45,6 +49,12 @@ QML linting, RustSec advisories, dependency licenses/sources, and forbidden
 shell-mediated execution in CI. `deny.toml` is intentionally explicit. Any
 future change to privilege, package management, path handling, process
 launching, or plugin entry points should receive a new security review.
+
+The HUD keeps the package pass behind a separate button so a user can inspect
+the scope before authorizing a longer operation. The package report's origin
+labels are inferred from local pacman sync metadata; `AUR / FOREIGN` is an
+honest fallback for packages not present in configured sync databases and is
+not proof of a specific upstream origin.
 
 ## Reporting
 

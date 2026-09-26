@@ -109,6 +109,20 @@ The application is intentionally interactive. It requires a TTY so it can
 enter the full-screen dashboard and restore your terminal cleanly when it
 exits.
 
+For a focused package pass, use the separate headless package command:
+
+```bash
+omniscient --packages
+```
+
+`--packages` selects only the Package Integrity module and publishes the same
+snapshot/report contract used by the Omarchy HUD. It is deliberately separate
+from `--hud` because package verification can be the slowest part of a scan on
+large installations, especially when `pacman -Qkk` walks many installed
+files. The command is read-only: it inventories package metadata and checks
+local package files, but it does not install, remove, upgrade, or downgrade
+anything.
+
 ### ⟦⌘⟧ Keyboard controls
 
 | Key | Action |
@@ -172,7 +186,9 @@ does not impose an Omarchy or desktop-specific default on other users.
 - ⟦SP⟧ **Security Posture** — listeners, firewall state, kernel posture, and Secure Boot
 - ⟦AA⟧ **Accounts & Auth** — local accounts, failed logins, sessions, and SSH configuration
 - ⟦PW⟧ **Persistence Watch** — enabled units, timers, cron, and autostart entries
-- ⟦PI⟧ **Package Integrity** — updates, orphans, foreign packages, and package verification
+- ⟦PI⟧ **Package Integrity** — repository categories, versions, update status,
+  updates, orphans, foreign packages, file verification, Flatpak/Snap
+  inventory, and the Omarchy package surface
 - ⟦RR⟧ **Recovery Readiness** — filesystem capacity, mounts, Btrfs scrub state, and trim
 - ⟦RS⟧ **Reliability Signals** — kernel warnings, hardware errors, coredumps, and sensors
 - ⟦PP⟧ **Performance Pulse** — load, memory, VM pressure, and boot latency
@@ -181,6 +197,42 @@ does not impose an Omarchy or desktop-specific default on other users.
 The capability matrix marks tools as available, missing, optional, or
 privileged before a scan starts. Missing optional tools are recorded as
 skipped instead of being treated as a system failure.
+
+### Package Integrity in detail
+
+Package Integrity is an evidence pass, not a package manager. It combines
+local `pacman` metadata with the configured sync database and records the
+source category for each installed package. The report presents these
+categories as a stable operator menu in the HUD:
+
+| Category | Meaning |
+| --- | --- |
+| `ARCH OFFICIAL` | Installed packages matched to the official Arch sync metadata. |
+| `OMARCHY` | Packages matched to the Omarchy repository. |
+| `BLACKARCH` | Packages matched to the BlackArch repository when that repository is configured. |
+| `CHAOTIC AUR` | Packages matched to Chaotic-AUR metadata when available. |
+| `AUR / FOREIGN` | Unlisted, locally built, or otherwise foreign packages; this is an origin classification, not a claim that every entry came from the AUR. |
+
+Each package line includes the installed version and a status token. `CURRENT`
+means the local version is not listed by `pacman -Qu`; `UPDATE AVAILABLE`
+means pacman reported that package as upgradeable. The report also keeps
+explicitly installed packages, orphan candidates, file-integrity results,
+Flatpak versions, Snap versions, and Omarchy package information in separate
+sections so a long inventory remains auditable.
+
+The Omarchy HUD adds a `PACKAGE SCAN` action beside `RUN FULL AUDIT`. A full
+audit selects all 17 modules. A package scan selects only Package Integrity,
+marks the other modules idle, updates the live snapshot as the package pass
+progresses, and writes a normal Markdown report plus `SUMMARY.md`. The report
+viewer adds category buttons for `ALL`, `ARCH OFFICIAL`, `OMARCHY`,
+`BLACKARCH`, `CHAOTIC AUR`, and `AUR / FOREIGN`; selecting one filters the
+visible report without changing the saved evidence. Category headings, version
+tokens, status labels, URLs, warnings, and code blocks receive semantic
+Cybercore colors in the in-panel reader.
+
+The package scan does not run as an implicit side effect of a normal HUD
+audit. This keeps the default operator action predictable and lets users
+choose the longer package verification pass when they actually want it.
 
 ## ⟦✦⟧ HEALTH // SIGNAL, NOT JUST INVENTORY
 
@@ -225,6 +277,13 @@ For a selected-module scan, reports are written directly beneath the same
 Omniscient report root and the generated `SUMMARY.md` links to each result.
 Command failures and unavailable tools remain visible in the Markdown output.
 
+The HUD report surface is interactive. Module cards open their matching
+report when one exists; the report index uses urgency colors, alternating
+rows, hover feedback, and clickable entries; the compact reader can switch
+to a full-window reader; and Markdown references are treated as explicit
+read-only links. External documentation links require an in-panel allow
+confirmation before the browser is launched.
+
 ### HUD state snapshot
 
 While the dashboard is open, Omniscient publishes an atomic, read-only JSON
@@ -246,18 +305,21 @@ states, summary path, and any fatal error without exposing command output.
 src/lib.rs         module declarations
 src/main.rs        interactive entry point
 src/tui.rs         interactive dashboard, input, worker thread, and progress state
-src/headless.rs    in-panel audit runner and snapshot publishing
+src/headless.rs    full and focused in-panel runners, including --packages,
+                   plus snapshot publishing
 src/modules.rs     AuditModule trait and 17 audit modules across 10 domains
 src/elevation.rs   sudo default and pkexec opt-in backend selection
 src/health.rs      health scoring from system signals
 src/paths.rs       XDG report-path resolution and per-user override
 src/report.rs      SUMMARY.md generation
 src/hud.rs         scanning animation helpers
-omarchy-plugin/    thin Quickshell HUD client for snapshot state
+omarchy-plugin/    Quickshell HUD client: full/package actions, live module
+                   registry, category filtering, report reader, and fix center
 src/pathcheck.rs   executable lookup without the which crate
 scripts/gate.sh    local and CI quality gates
 scripts/package.sh reproducible Linux release archive
 assets/             release preview and project visuals
+docs/               detailed operator contracts, including package integrity
 install.sh         locked release build and atomic installation
 LICENSE            MIT license
 CHANGELOG.md       release history

@@ -7,9 +7,16 @@ and renders the resulting report index and Markdown content in place.
 ## Current surface
 
 - Bar widget with live health score when a snapshot is available.
-- Expanded overlay panel with a run-in-place audit action, live health score,
-  module states, privilege hints, report index, Markdown report viewer, and
-  score-colored repair suggestions.
+- Expanded overlay panel with separate `RUN FULL AUDIT` and `PACKAGE SCAN`
+  actions, live health score, module states, privilege hints, report index,
+  Markdown report viewer, and score-colored repair suggestions.
+- Package Integrity has its own focused scan path. The report reader exposes
+  `ALL`, `ARCH OFFICIAL`, `OMARCHY`, `BLACKARCH`, `CHAOTIC AUR`, and
+  `AUR / FOREIGN` category buttons. Package versions and `CURRENT` /
+  `UPDATE AVAILABLE` status tokens are color-coded in the reader.
+- Module cards and report-index rows are clickable. Hover states, alternating
+  rows, urgency borders, semantic Markdown colors, and a full-window report
+  reader make the saved evidence navigable without leaving the HUD.
 - Larger Cybercore typography and health levels: HEALTHY, WATCH, WARNING, and
   URGENT.
 - Audit-generated `SUGGESTIONS.md` reports include commands, man pages, and
@@ -45,6 +52,9 @@ Then enable it with:
 
     omarchy plugin enable io.github.cybercore-tech.omniscient right
 
-The plugin does not edit shell.json. The `RUN AUDIT HERE` action starts the
-explicit user-requested `omniscient --hud` audit and leaves the existing
-interactive terminal dashboard available as a separate mode.
+The plugin does not edit shell.json. `RUN FULL AUDIT` starts the explicit
+user-requested `omniscient --hud` audit. `PACKAGE SCAN` starts
+`omniscient --packages`, which selects only Package Integrity so long package
+verification does not surprise users who asked for the normal audit. Both
+actions leave the existing interactive terminal dashboard available as a
+separate mode and publish the same versioned snapshot contract.

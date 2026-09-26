@@ -5,6 +5,18 @@ All notable changes to Omniscient are documented here.
 ## [Unreleased]
 
 - Continue hardening cross-distribution audit behavior.
+- Added a dedicated `omniscient --packages` headless path and a separate
+  Omarchy `PACKAGE SCAN` action so package verification is opt-in rather than
+  part of every full HUD audit.
+- Expanded Package Integrity reports with Arch Official, Omarchy, BlackArch,
+  Chaotic AUR, and AUR/Foreign origin categories, installed versions, and
+  `CURRENT` / `UPDATE AVAILABLE` status markers.
+- Added clickable package-category filtering, report-index and module-card
+  navigation, hover states, alternating rows, full-window report reading, and
+  semantic Markdown/code highlighting to the Omarchy surface.
+- Documented the package evidence model, focused scan behavior, report
+  navigation, and read-only boundaries in the README, plugin guide, and
+  security notes.
 
 ## [0.1.0] - 2026-09-23
 

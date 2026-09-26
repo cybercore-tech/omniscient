@@ -68,6 +68,7 @@ Item {
     if (value === "running") return "#ff4f9a"
     if (value === "error" || value === "failed") return "#ff667d"
     if (value === "queued") return "#ffb454"
+    if (value === "idle") return "#8290a4"
     return "#52e8ff"
   }
 

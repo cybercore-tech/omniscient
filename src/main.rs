@@ -9,6 +9,8 @@ fn main() -> Result<()> {
         omniscient::fix::run(fix_id)
     } else if args.iter().any(|arg| arg == "--hud") {
         omniscient::headless::run()
+    } else if args.iter().any(|arg| arg == "--packages") {
+        omniscient::headless::run_packages()
     } else {
         omniscient::tui::run()
     }

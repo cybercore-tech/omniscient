@@ -5,7 +5,7 @@ use crate::paths;
 use crate::report;
 use crate::snapshot::{self, AuditSnapshot, HealthSnapshot, ModuleSnapshot};
 use crate::suggestions::{self, Suggestion};
-use anyhow::{Context, Result};
+use anyhow::{bail, Context, Result};
 use chrono::Local;
 use std::path::Path;
 
@@ -16,20 +16,42 @@ use std::path::Path;
 /// atomic snapshots after every meaningful state transition for the Omarchy
 /// HUD to render in place.
 pub fn run() -> Result<()> {
+    run_with_selection(None)
+}
+
+/// Run only the package-integrity module for a fast, explicit package scan.
+/// This is intentionally separate from the full audit because package
+/// verification can be expensive on large installations.
+pub fn run_packages() -> Result<()> {
+    run_with_selection(Some(&["packages"]))
+}
+
+fn run_with_selection(selected_slugs: Option<&[&str]>) -> Result<()> {
     if elevation::reexec_graphical()? {
         return Ok(());
     }
 
-    let result = run_audit();
+    let result = run_audit(selected_slugs);
     if elevation::is_privileged() {
         elevation::restore_user_files()?;
     }
     result
 }
 
-fn run_audit() -> Result<()> {
+fn run_audit(selected_slugs: Option<&[&str]>) -> Result<()> {
     let modules = modules::all_modules();
-    let selected = (0..modules.len()).collect::<Vec<_>>();
+    let selected = match selected_slugs {
+        Some(slugs) => modules
+            .iter()
+            .enumerate()
+            .filter(|(_, module)| slugs.contains(&module.slug()))
+            .map(|(index, _)| index)
+            .collect::<Vec<_>>(),
+        None => (0..modules.len()).collect::<Vec<_>>(),
+    };
+    if selected.is_empty() {
+        bail!("no audit modules matched the requested selection");
+    }
     let health = health::compute_selected(&modules, &selected);
     let timestamp = Local::now().format("%Y-%m-%d_%H-%M-%S").to_string();
     let base_dir = paths::report_root();
@@ -37,7 +59,7 @@ fn run_audit() -> Result<()> {
     std::fs::create_dir_all(&root)
         .with_context(|| format!("creating report directory {}", root.display()))?;
 
-    let mut states = vec!["queued".to_string(); modules.len()];
+    let mut states = vec!["idle".to_string(); modules.len()];
     let mut reports = Vec::new();
     let suggestions = suggestions::from_health(&health);
     let suggestions_path = suggestions::write_report(&root, &timestamp, &health, &suggestions)?;
@@ -49,8 +71,13 @@ fn run_audit() -> Result<()> {
         &suggestions,
         Some(suggestions_path.display().to_string()),
         None,
-        "FULL SYSTEM AUDIT QUEUED",
+        if selected_slugs.is_some() {
+            "PACKAGE SCAN QUEUED"
+        } else {
+            "FULL SYSTEM AUDIT QUEUED"
+        },
         None,
+        &selected,
     );
 
     for (position, index) in selected.iter().copied().enumerate() {
@@ -71,6 +98,7 @@ fn run_audit() -> Result<()> {
                 module.name().to_uppercase()
             ),
             None,
+            &selected,
         );
 
         let dir = root.join(format!("{}-{timestamp}", module.slug()));
@@ -91,6 +119,7 @@ fn run_audit() -> Result<()> {
                     None,
                     &format!("COMPLETE / {}", report_path.display()),
                     None,
+                    &selected,
                 );
             }
             Err(error) => {
@@ -105,6 +134,7 @@ fn run_audit() -> Result<()> {
                     None,
                     &format!("FAILED / {} / {}", module.name(), error),
                     None,
+                    &selected,
                 );
             }
         }
@@ -142,8 +172,13 @@ fn run_audit() -> Result<()> {
         &suggestions,
         Some(suggestions_path.display().to_string()),
         Some(summary_path),
-        "AUDIT COMPLETE",
+        if selected_slugs.is_some() {
+            "PACKAGE SCAN COMPLETE"
+        } else {
+            "AUDIT COMPLETE"
+        },
         None,
+        &selected,
     );
     Ok(())
 }
@@ -159,6 +194,7 @@ fn publish(
     summary_path: Option<String>,
     message: &str,
     error: Option<String>,
+    selected: &[usize],
 ) {
     let completed_count = states
         .iter()
@@ -176,7 +212,7 @@ fn publish(
         },
         updated_at: Local::now().to_rfc3339(),
         host: std::env::var("HOSTNAME").unwrap_or_else(|_| "unknown-host".to_string()),
-        selected_count: modules.len(),
+        selected_count: selected.len(),
         completed_count,
         health: Some(HealthSnapshot {
             score: health.score,
@@ -192,7 +228,7 @@ fn publish(
                     .get(index)
                     .cloned()
                     .unwrap_or_else(|| "unknown".to_string()),
-                selected: true,
+                selected: selected.contains(&index),
                 requires_sudo: module.requires_sudo(),
             })
             .collect(),

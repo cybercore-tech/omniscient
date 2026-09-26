@@ -26,6 +26,8 @@ Item {
   property bool confirmingFix: false
   property bool confirmingHelp: false
   property bool helpLaunchLocked: false
+  property string packageCategory: "ALL"
+  property var packageCategories: ["ALL", "ARCH OFFICIAL", "OMARCHY", "BLACKARCH", "CHAOTIC AUR", "AUR / FOREIGN"]
   property string pendingHelpUrl: ""
   property string pendingHelpLabel: ""
   property bool fullReportView: false
@@ -145,10 +147,20 @@ Item {
   }
 
   function runAudit() {
-    if (auditRunner.running) return
+    if (auditRunner.running || packageRunner.running) return
     root.runnerMessage = "AUDIT PROCESS STARTING"
+    root.packageCategory = "ALL"
     root.opened = true
     auditRunner.running = true
+    SnapshotReader.refresh()
+  }
+
+  function runPackageScan() {
+    if (auditRunner.running || packageRunner.running) return
+    root.runnerMessage = "PACKAGE SCAN STARTING"
+    root.packageCategory = "ALL"
+    root.opened = true
+    packageRunner.running = true
     SnapshotReader.refresh()
   }
 
@@ -165,8 +177,71 @@ Item {
       return
     }
     root.selectedReport = value
+    if (!root.isPackageReport(value)) root.packageCategory = "ALL"
     root.reportText = "LOADING REPORT..."
     reportReader.running = true
+  }
+
+  function isPackageReport(path) {
+    return String(path || "").endsWith("/packages.md")
+  }
+
+  function reportForModule(slug) {
+    var needle = "/" + String(slug || "") + "-"
+    for (var i = 0; i < SnapshotReader.reports.length; i++) {
+      var value = String(SnapshotReader.reports[i] || "")
+      if (value.indexOf(needle) >= 0) return value
+    }
+    return ""
+  }
+
+  function openModuleReport(slug) {
+    var path = root.reportForModule(slug)
+    if (path.length > 0) root.openReport(path)
+  }
+
+  function activateReportLink(link) {
+    var value = String(link || "")
+    if (value.indexOf("#category:") === 0) {
+      root.selectPackageCategory(value.substring("#category:".length))
+      return
+    }
+    root.requestHelp(value, "REPORT REFERENCE")
+  }
+
+  function packageCategoryLine(line) {
+    var value = String(line || "")
+    for (var i = 1; i < root.packageCategories.length; i++) {
+      if (value.indexOf(root.packageCategories[i] + " /") === 0) return true
+    }
+    return false
+  }
+
+  function packageReportView() {
+    if (!root.isPackageReport(root.selectedReport) || root.packageCategory === "ALL")
+      return root.reportText
+
+    var lines = String(root.reportText || "").split("\n")
+    var selected = []
+    var inside = false
+    for (var i = 0; i < lines.length; i++) {
+      var line = lines[i]
+      if (!inside && line.indexOf(root.packageCategory + " /") === 0) {
+        inside = true
+        selected.push(line)
+        continue
+      }
+      if (inside && (root.packageCategoryLine(line) || line.indexOf("## ") === 0))
+        break
+      if (inside) selected.push(line)
+    }
+    if (!selected.length) return "# PACKAGE CATEGORY / " + root.packageCategory + "\n\nNo packages were detected in this category."
+    return "# PACKAGE CATEGORY / " + root.packageCategory + "\n\n```\n" + selected.join("\n") + "\n```"
+  }
+
+  function selectPackageCategory(category) {
+    root.packageCategory = String(category || "ALL")
+    reportBodyScroll.contentY = 0
   }
 
   function isSafeReportPath(path) {
@@ -193,6 +268,20 @@ Item {
     return html
   }
 
+  function highlightCode(value) {
+    var html = escapeHtml(value)
+    html = html.replace(/^(ARCH OFFICIAL|OMARCHY|BLACKARCH|CHAOTIC AUR|AUR \/ FOREIGN)(\s*\/.*)$/,
+      "<font color='#52e8ff'><b>$1</b></font><font color='#8290a4'>$2</font>")
+    html = html.replace(/\b(UPDATE AVAILABLE)\b/g, "<font color='#ffb454'><b>$1</b></font>")
+    html = html.replace(/\b(CURRENT)\b/g, "<font color='#c8e967'><b>$1</b></font>")
+    html = html.replace(/\b(FAILED|ERROR|WARNING|WARN)\b/g, "<font color='#ff667d'><b>$1</b></font>")
+    html = html.replace(/\b(PASS|COMPLETE|READY|HEALTHY)\b/g, "<font color='#c8e967'><b>$1</b></font>")
+    html = html.replace(/\b([0-9]+(?::[0-9]+)?(?:\.[0-9A-Za-z]+)+(?:[-+][0-9A-Za-z.+:~_-]+)?)\b/g,
+      "<font color='#ffb454'>$1</font>")
+    html = html.replace(/(https?:\/\/[^\s<]+)/g, "<font color='#52e8ff'>$1</font>")
+    return html
+  }
+
   function markdownToRichText(value) {
     var lines = String(value || "").split("\n")
     var html = []
@@ -205,7 +294,7 @@ Item {
           ? "<font color='#a56bff'><b>▌ CODE BLOCK</b></font><br>"
           : "<font color='#a56bff'><b>▌ END CODE</b></font><br>")
       } else if (inCode) {
-        html.push("<font color='#7dd3fc'>" + escapeHtml(line) + "</font><br>")
+        html.push("<font color='#7dd3fc'>" + highlightCode(line) + "</font><br>")
       } else if (line.indexOf("### ") === 0) {
         html.push("<font color='#ffb454'><b>" + inlineMarkdown(line.substring(4)) + "</b></font><br>")
       } else if (line.indexOf("## ") === 0) {
@@ -251,6 +340,14 @@ Item {
     if (value.indexOf("log") >= 0) return "📜"
     if (value.indexOf("bluetooth") >= 0) return "📡"
     if (value.indexOf("device") >= 0) return "🔌"
+    if (value.indexOf("security") >= 0) return "🛡️"
+    if (value.indexOf("account") >= 0) return "🔐"
+    if (value.indexOf("persistence") >= 0) return "🧬"
+    if (value.indexOf("package") >= 0) return "🧾"
+    if (value.indexOf("recovery") >= 0) return "🧰"
+    if (value.indexOf("reliability") >= 0) return "📈"
+    if (value.indexOf("performance") >= 0) return "⚡"
+    if (value.indexOf("omarchy") >= 0) return "🖥️"
     if (value.indexOf("suggestion") >= 0) return "🧰"
     if (value.indexOf("summary") >= 0) return "🛰️"
     return "📄"
@@ -268,6 +365,22 @@ Item {
           : "AUDIT PROCESS EXITED / CODE " + exitCode
       } else {
         root.runnerMessage = "AUDIT PROCESS COMPLETE"
+      }
+    }
+  }
+
+  Process {
+    id: packageRunner
+    command: ["/usr/bin/env", "OMNISCIENT_AUTH=sudo", root.omniscientBinary, "--packages"]
+    stderr: StdioCollector { id: packageStderr; waitForEnd: true }
+    onExited: function(exitCode) {
+      SnapshotReader.refresh()
+      if (exitCode !== 0) {
+        root.runnerMessage = packageStderr.text.trim().length
+          ? packageStderr.text.trim()
+          : "PACKAGE SCAN EXITED / CODE " + exitCode
+      } else {
+        root.runnerMessage = "PACKAGE SCAN COMPLETE"
       }
     }
   }
@@ -451,25 +564,58 @@ Item {
               color: SnapshotReader.errorMessage.length ? "#ff667d" : "#8290a4"
               font.family: "monospace"; font.pixelSize: root.fontMicro; elide: Text.ElideMiddle
             }
-            Rectangle {
-              Layout.preferredWidth: 200
-              Layout.preferredHeight: 36
-              radius: 4
-              color: "#121c2b"
-              border.width: 1
-              border.color: "#ff4f9a"
-              Text {
-                anchors.centerIn: parent
-                text: auditRunner.running ? "AUDIT RUNNING..." : "RUN AUDIT HERE"
-                color: "#ff4f9a"
-                font.family: "monospace"
-                font.pixelSize: root.fontSmall
-                font.bold: true
+            RowLayout {
+              Layout.fillWidth: true
+              spacing: 8
+              Rectangle {
+                Layout.preferredWidth: 180
+                Layout.preferredHeight: 36
+                radius: 4
+                property bool hovered: false
+                color: hovered ? "#2a1935" : (auditRunner.running ? "#24172a" : "#121c2b")
+                border.width: 1
+                border.color: "#ff4f9a"
+                Text {
+                  anchors.centerIn: parent
+                  text: auditRunner.running ? "AUDIT RUNNING..." : "RUN FULL AUDIT"
+                  color: "#ff4f9a"
+                  font.family: "monospace"
+                  font.pixelSize: root.fontSmall
+                  font.bold: true
+                }
+                MouseArea {
+                  anchors.fill: parent
+                  cursorShape: Qt.PointingHandCursor
+                  hoverEnabled: true
+                  onEntered: parent.hovered = true
+                  onExited: parent.hovered = false
+                  onClicked: root.runAudit()
+                }
               }
-              MouseArea {
-                anchors.fill: parent
-                cursorShape: Qt.PointingHandCursor
-                onClicked: root.runAudit()
+              Rectangle {
+                Layout.preferredWidth: 180
+                Layout.preferredHeight: 36
+                radius: 4
+                property bool hovered: false
+                color: hovered ? "#3a2d18" : (packageRunner.running ? "#2a2417" : "#121c2b")
+                border.width: 1
+                border.color: "#ffb454"
+                Text {
+                  anchors.centerIn: parent
+                  text: packageRunner.running ? "PACKAGE SCANNING..." : "PACKAGE SCAN"
+                  color: "#ffb454"
+                  font.family: "monospace"
+                  font.pixelSize: root.fontSmall
+                  font.bold: true
+                }
+                MouseArea {
+                  anchors.fill: parent
+                  cursorShape: Qt.PointingHandCursor
+                  hoverEnabled: true
+                  onEntered: parent.hovered = true
+                  onExited: parent.hovered = false
+                  onClicked: root.runPackageScan()
+                }
               }
             }
           }
@@ -488,11 +634,12 @@ Item {
           Repeater {
             model: SnapshotReader.modules
             delegate: Rectangle {
+              property bool hovered: false
               Layout.fillWidth: true
               Layout.preferredHeight: 54
-              color: "#111824"
+              color: hovered ? "#1a2940" : (index % 2 ? "#0f1725" : "#111824")
               border.width: 1
-              border.color: "#263445"
+              border.color: hovered ? "#52e8ff" : "#263445"
               ColumnLayout {
                 anchors.fill: parent
                 anchors.margins: 9
@@ -500,6 +647,14 @@ Item {
                 Text { text: String(modelData.name || "").toUpperCase(); color: "#f2f5f7"; font.family: "monospace"; font.pixelSize: root.fontSmall; elide: Text.ElideRight; Layout.fillWidth: true }
                 Text { text: String(modelData.state || "unknown").toUpperCase(); color: root.moduleStateColor(String(modelData.state || "unknown")); font.family: "monospace"; font.pixelSize: root.fontMicro }
                 Text { text: modelData.requires_sudo ? "ELEVATED" : "USER MODE"; color: "#8290a4"; font.family: "monospace"; font.pixelSize: root.fontMicro }
+              }
+              MouseArea {
+                anchors.fill: parent
+                hoverEnabled: true
+                cursorShape: root.reportForModule(String(modelData.slug || "")).length ? Qt.PointingHandCursor : Qt.ArrowCursor
+                onEntered: parent.hovered = true
+                onExited: parent.hovered = false
+                onClicked: root.openModuleReport(String(modelData.slug || ""))
               }
             }
           }
@@ -569,11 +724,12 @@ Item {
               spacing: 5
 
               delegate: Rectangle {
+                property bool hovered: false
                 width: ListView.view.width
                 height: 62
-                color: "#111824"
+                color: hovered ? "#1a2940" : (index % 2 ? "#0f1725" : "#111824")
                 border.width: 1
-                border.color: SnapshotReader.severityColor(String(modelData.severity || "attention"))
+                border.color: hovered ? "#52e8ff" : SnapshotReader.severityColor(String(modelData.severity || "attention"))
 
                 RowLayout {
                   anchors.fill: parent
@@ -633,6 +789,13 @@ Item {
                     }
                   }
                 }
+                MouseArea {
+                  anchors.fill: parent
+                  hoverEnabled: true
+                  acceptedButtons: Qt.NoButton
+                  onEntered: parent.hovered = true
+                  onExited: parent.hovered = false
+                }
               }
 
               Text {
@@ -670,9 +833,14 @@ Item {
                 clip: true
                 model: SnapshotReader.reports
                 delegate: Rectangle {
+                  property bool hovered: false
                   width: ListView.view.width
                   height: 32
-                  color: root.selectedReport === String(modelData) ? "#1a2940" : "transparent"
+                  color: hovered || root.selectedReport === String(modelData)
+                    ? "#1a2940"
+                    : (index % 2 ? "#0f1725" : "transparent")
+                  border.width: hovered ? 1 : 0
+                  border.color: "#52e8ff"
                   Text {
                     anchors.fill: parent
                     anchors.margins: 6
@@ -685,6 +853,9 @@ Item {
                   MouseArea {
                     anchors.fill: parent
                     cursorShape: Qt.PointingHandCursor
+                    hoverEnabled: true
+                    onEntered: parent.hovered = true
+                    onExited: parent.hovered = false
                     onClicked: root.openReport(String(modelData))
                   }
                 }
@@ -730,7 +901,49 @@ Item {
                   MouseArea { anchors.fill: parent; cursorShape: Qt.PointingHandCursor; onClicked: root.fullReportView = true }
                 }
               }
+              RowLayout {
+                visible: root.isPackageReport(root.selectedReport)
+                Layout.fillWidth: true
+                spacing: 5
+                Text {
+                  text: "CATEGORIES"
+                  color: "#8290a4"
+                  font.family: "monospace"
+                  font.pixelSize: root.fontMicro
+                  font.bold: true
+                }
+                Repeater {
+                  model: root.packageCategories
+                  delegate: Rectangle {
+                    property bool hovered: false
+                    Layout.preferredHeight: 24
+                    Layout.preferredWidth: Math.max(42, packageCategoryLabel.implicitWidth + 16)
+                    radius: 3
+                    color: hovered || root.packageCategory === modelData ? "#1a2940" : "#111824"
+                    border.width: 1
+                    border.color: root.packageCategory === modelData ? "#52e8ff" : (hovered ? "#ffb454" : "#263445")
+                    Text {
+                      id: packageCategoryLabel
+                      anchors.centerIn: parent
+                      text: String(modelData)
+                      color: root.packageCategory === modelData ? "#52e8ff" : "#c8d2e8"
+                      font.family: "monospace"
+                      font.pixelSize: root.fontMicro
+                      font.bold: root.packageCategory === modelData
+                    }
+                    MouseArea {
+                      anchors.fill: parent
+                      hoverEnabled: true
+                      cursorShape: Qt.PointingHandCursor
+                      onEntered: parent.hovered = true
+                      onExited: parent.hovered = false
+                      onClicked: root.selectPackageCategory(String(modelData))
+                    }
+                  }
+                }
+              }
               Flickable {
+                id: reportBodyScroll
                 Layout.fillWidth: true
                 Layout.fillHeight: true
                 clip: true
@@ -739,13 +952,13 @@ Item {
                 Text {
                   id: reportBody
                   width: parent.width
-                  text: root.markdownToRichText(root.reportText.length ? root.reportText : "SELECT A REPORT TO VIEW IT HERE")
+                  text: root.markdownToRichText(root.reportText.length ? root.packageReportView() : "SELECT A REPORT TO VIEW IT HERE")
                   color: "#c8d2e8"
                   font.family: "monospace"
                   font.pixelSize: root.fontBody
                   wrapMode: Text.Wrap
                   textFormat: Text.RichText
-                  onLinkActivated: function(link) { root.requestHelp(link, "REPORT REFERENCE") }
+                  onLinkActivated: function(link) { root.activateReportLink(link) }
                 }
               }
             }
@@ -951,7 +1164,7 @@ Item {
                 font.pixelSize: root.fontBody
                 wrapMode: Text.Wrap
                 textFormat: Text.RichText
-                onLinkActivated: function(link) { root.requestHelp(link, "REPORT REFERENCE") }
+                onLinkActivated: function(link) { root.activateReportLink(link) }
               }
             }
           }
