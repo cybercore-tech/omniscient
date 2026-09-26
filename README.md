@@ -317,7 +317,10 @@ src/hud.rs         scanning animation helpers
 omarchy-plugin/    Quickshell HUD client: full/package actions, live module
                    registry, category filtering, report reader, and fix center
 src/pathcheck.rs   executable lookup without the which crate
+src/capture.rs     bounded command capture: timeouts, output limits, cleaning
 scripts/gate.sh    local and CI quality gates
+scripts/plugin-gate.sh  strict QML lint + runtime harness for the plugin
+tests/plugin/      plugin harness (nested compositor) and synthetic fixtures
 scripts/package.sh reproducible Linux release archive
 assets/             release preview and project visuals
 docs/               detailed operator contracts, including package integrity
@@ -330,9 +333,20 @@ Run the local quality gates before publishing a change:
 
 ```bash
 ./scripts/gate.sh quick    # format, compile, and tests
-./scripts/gate.sh full     # all checks, including Clippy and shell syntax
+./scripts/gate.sh full     # everything below, including the plugin gate
 ./scripts/gate.sh release  # full checks plus an optimized build
+./scripts/gate.sh plugin   # only the Omarchy plugin gate
 ```
+
+`full` runs `git diff --check`, rustfmt, `cargo check`, Clippy with
+`clippy::pedantic` denied (set in `Cargo.toml`) and all warnings fatal, every
+test target, doctests, rustdoc with warnings fatal, shell syntax checks, the
+static security gate, and the plugin gate. The plugin gate lints every QML
+file with Qt 6 `qmllint` at the strictest setting, then loads the real plugin
+into a nested, memory-capped compositor and drives it through 51 checks,
+including a 75 MB report and a memory soak. It needs an Omarchy session, so CI
+skips it (`OMNISCIENT_SKIP_PLUGIN_GATE=1`); run it locally before pushing.
+See [docs/TESTING.md](docs/TESTING.md).
 
 The gates use `CARGO_TARGET_DIR` when provided; otherwise they keep build
 artifacts in `.cargo-target/` inside the checkout.

@@ -26,6 +26,28 @@ it.
 - Privileged executable lookup is restricted to system-owned directories. No
   privileged command is constructed through a shell.
 
+## Resource bounds
+
+A report is evidence, not a dump, and the HUD renders it inside the
+unsandboxed desktop shell. An unbounded `omarchy debug` section once produced
+a 75 MB report that froze the Omarchy shell when opened, so both sides are
+bounded independently:
+
+- **Collection** (`src/capture.rs`): every command a module runs has a
+  timeout (5 minutes by default, 15 for `pacman -Qkk` and repairs), keeps at
+  most 256 KiB of each output stream in memory while draining and counting
+  the rest, reads stdin from `/dev/null`, and cannot be hung by a grandchild
+  that keeps its pipes open.
+- **Reports**: each section is cleaned of terminal escape and control
+  characters, its code fences are defused, and it is capped at 256 KiB and
+  4,000 lines; a whole module report is capped at 2 MiB. Every cut says how
+  much was omitted.
+- **HUD** (`omarchy-plugin/`): the snapshot is read with `head -c` (1 MiB
+  limit) and reports with `head -c` (512 KiB limit), so an old or hostile file
+  cannot be pulled into the shell whole. Snapshot lists and strings are
+  capped, an unchanged snapshot causes no UI updates, and reports are shown
+  through virtualized list views that render only the on-screen part.
+
 ## Repair actions
 
 Repair actions are deliberately narrow. The panel requires an explicit user

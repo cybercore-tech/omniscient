@@ -4,6 +4,40 @@ All notable changes to Omniscient are documented here.
 
 ## [Unreleased]
 
+### Fixed
+
+- **The HUD could freeze the Omarchy desktop shell.** Opening a module report
+  loaded the whole file into the shell and rendered it on the UI thread; a
+  75 MB `omarchy.md` pushed the shell past 11 GB. The plugin now reads at most
+  512 KiB of a report (`head -c`, truncation detected in UTF-8 bytes and
+  explained), renders reports through virtualized list views (worst stall on
+  real reports: 73 ms, down from 3.5 s), and renders the full-report view only
+  while it is open.
+- The snapshot reader no longer reassigns every property and list once a
+  second; an unchanged snapshot causes no UI work. It polls every two seconds,
+  reads at most 1 MiB, and caps lists and strings.
+- The snapshot reader is a Quickshell `Singleton` instead of an `Item`, whose
+  own `state` property was being driven as a Qt state machine.
+- Overlay panels no longer sit inside a `ColumnLayout` (undefined layout
+  behavior), and layout-managed items use implicit sizes.
+- Module reports are bounded at the source: command capture has timeouts,
+  per-stream memory limits, stdin from `/dev/null`, protection against
+  grandchildren holding pipes, and terminal-escape/control-character
+  cleaning; sections are capped at 256 KiB / 4,000 lines and reports at 2 MiB,
+  with an explicit note of what was omitted. Journal queries are limited to
+  500 entries.
+- The Omarchy module calls `omarchy-debug` directly; the `omarchy debug`
+  dispatcher route is rejected on current omarchy-dev builds.
+- Health scoring saturates instead of overflowing on many failed units.
+
+### Changed
+
+- `clippy::pedantic` is denied crate-wide and `unsafe_code` is forbidden.
+- `scripts/gate.sh full` adds all-target Clippy, doctests, strict rustdoc and
+  the new plugin gate (`scripts/plugin-gate.sh`): Qt 6 `qmllint` at its
+  strictest plus a runtime harness in a nested, memory-capped compositor. See
+  [docs/TESTING.md](docs/TESTING.md).
+
 - Continue hardening cross-distribution audit behavior.
 - Added a dedicated `omniscient --packages` headless path and a separate
   Omarchy `PACKAGE SCAN` action so package verification is opt-in rather than
