@@ -151,7 +151,7 @@ footer { border-top:1px solid var(--line); padding:30px 0 44px; color:var(--mute
       <h1>See the whole system.<span class="accent">Keep the signal.</span></h1>
       <p class="hero-copy"><strong>Omniscient</strong> turns Linux inspection into one readable, repeatable surface — hardware, storage, services, network state, capabilities, and the report that connects them.</p>
       <div class="actions"><a class="btn primary" href="#install">Deploy the console →</a><a class="btn" href="https://github.com/cybercore-tech/omniscient">View source</a></div>
-      <div class="hero-meta"><div><b>17</b>audit modules</div><div><b>10</b>diagnostic domains</div><div><b>MIT</b>open source</div></div>
+      <div class="hero-meta"><div><b>17</b>audit modules</div><div><b>10</b>diagnostic domains</div><div><b>2</b>focused scan paths</div></div>
     </div>
     <div class="hero-art" aria-label="Omniscient radar logo">
       <svg class="radar" viewBox="0 0 320 320" role="img">
@@ -200,7 +200,7 @@ footer { border-top:1px solid var(--line); padding:30px 0 44px; color:var(--mute
 </section>
 
 <section id="modules">
-  <div class="wrap"><div class="section-head"><div><div class="kicker">Module registry</div><h2>Every signal gets a name.</h2></div><p>Pick a focused pass or run the full system audit. Optional tools are reported as optional — never disguised as failure.</p></div>
+  <div class="wrap"><div class="section-head"><div><div class="kicker">Module registry</div><h2>Every signal gets a name.</h2></div><p>Pick a focused pass or run the full system audit. Optional tools are reported as optional — never disguised as failure. Package verification is a separate, deliberate action.</p></div>
     <div class="module-list">
       <div class="module"><div class="module-icon">HW</div><div><b>Hardware core</b><small>CPU · USB · PCI</small></div><span class="status">ready</span></div>
       <div class="module"><div class="module-icon">ST</div><div><b>Storage matrix</b><small>disks · SMART · Btrfs</small></div><span class="status">ready</span></div>
@@ -213,7 +213,7 @@ footer { border-top:1px solid var(--line); padding:30px 0 44px; color:var(--mute
       <div class="module"><div class="module-icon">SP</div><div><b>Security posture</b><small>firewall · kernel · boot</small></div><span class="status">read-only</span></div>
       <div class="module"><div class="module-icon">AA</div><div><b>Accounts &amp; auth</b><small>users · sessions · SSH</small></div><span class="status">read-only</span></div>
       <div class="module"><div class="module-icon">PW</div><div><b>Persistence watch</b><small>units · timers · cron</small></div><span class="status">read-only</span></div>
-      <div class="module"><div class="module-icon">PI</div><div><b>Package integrity</b><small>updates · verify · orphans</small></div><span class="status">read-only</span></div>
+      <div class="module"><div class="module-icon">PI</div><div><b>Package integrity</b><small>categories · versions · status · verify</small></div><span class="status">focused</span></div>
       <div class="module"><div class="module-icon">RR</div><div><b>Recovery readiness</b><small>mounts · Btrfs · trim</small></div><span class="status">read-only</span></div>
       <div class="module"><div class="module-icon">RS</div><div><b>Reliability signals</b><small>errors · dumps · sensors</small></div><span class="status">read-only</span></div>
       <div class="module"><div class="module-icon">PP</div><div><b>Performance pulse</b><small>load · memory · boot</small></div><span class="status">read-only</span></div>
@@ -226,7 +226,7 @@ footer { border-top:1px solid var(--line); padding:30px 0 44px; color:var(--mute
 <section id="reports">
   <div class="wrap split">
     <div class="dashboard"><img src="https://raw.githubusercontent.com/cybercore-tech/omniscient/main/assets/omniscient-dashboard-v0.1.0.png" alt="Omniscient audit dashboard preview"></div>
-    <div class="copy"><div class="kicker">Readable by design</div><h2>Scan once.<br>Keep the evidence.</h2><p>Every run ends in a linked Markdown report beneath <strong>~/.local/state/omniscient/</strong>. The summary keeps command failures, missing capabilities, and health signals in view.</p><div class="window"><div class="titlebar"><i></i><i></i><i></i><span>report / latest</span></div><div class="window-body"><pre><span class="value">PASS</span>  hardware.md
+    <div class="copy"><div class="kicker">Readable by design</div><h2>Scan once.<br>Keep the evidence.</h2><p>Every run ends in a linked Markdown report beneath <strong>~/.local/state/omniscient/</strong>. The summary keeps command failures, missing capabilities, and health signals in view.</p><p>The Omarchy HUD separates <strong>RUN FULL AUDIT</strong> from <strong>PACKAGE SCAN</strong>. The package reader groups evidence into <strong>ARCH OFFICIAL</strong>, <strong>OMARCHY</strong>, <strong>BLACKARCH</strong>, <strong>CHAOTIC AUR</strong>, and <strong>AUR / FOREIGN</strong>, then marks each version <strong>CURRENT</strong> or <strong>UPDATE AVAILABLE</strong> using pacman's own update metadata.</p><div class="window"><div class="titlebar"><i></i><i></i><i></i><span>report / latest</span></div><div class="window-body"><pre><span class="value">PASS</span>  hardware.md
 <span class="value">PASS</span>  network.md
 <span class="value">WARN</span>  smartctl unavailable
 <span class="value">PASS</span>  SUMMARY.md</pre></div></div></div>
@@ -235,7 +235,7 @@ footer { border-top:1px solid var(--line); padding:30px 0 44px; color:var(--mute
 
 <section id="showcase">
   <div class="wrap">
-    <div class="section-head"><div><div class="kicker">Operator walkthrough</div><h2>From scan<br>to signal.</h2></div><p>One continuous surface for the audit, repair decision, and evidence trail. The public captures are sanitized and color-matched as a single gallery.</p></div>
+    <div class="section-head"><div><div class="kicker">Operator walkthrough</div><h2>From scan<br>to signal.</h2></div><p>One continuous surface for the audit, repair decision, and evidence trail. The public captures are sanitized and color-matched as a single gallery. Reports, module cards, and package categories are navigable in place with urgency colors and hover feedback.</p></div>
     <div class="showcase-grid">
       <figure class="showcase-card"><img src="assets/screenshots/omniscient-01-system-audit.png" alt="Omniscient system audit overview"><figcaption><b>01 / SYSTEM AUDIT</b><span>module registry</span></figcaption></figure>
       <figure class="showcase-card"><img src="assets/screenshots/omniscient-02-fix-center.png" alt="Omniscient Fix Center repair controls"><figcaption><b>02 / FIX CENTER</b><span>manual or authorized repair</span></figcaption></figure>
