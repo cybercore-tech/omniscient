@@ -1,4 +1,5 @@
 use anyhow::{Context, Result};
+use std::collections::BTreeMap;
 use std::fs::File;
 use std::io::Write;
 use std::path::Path;
@@ -675,14 +676,188 @@ impl AuditModule for PackageIntegrity {
             "packages.md",
             "PACKAGE INTEGRITY",
             &[
-                ("pacman -Qu", capture("pacman", &["-Qu"])),
-                ("pacman -Qdtq", capture("pacman", &["-Qdtq"])),
-                ("pacman -Qm", capture("pacman", &["-Qm"])),
-                ("pacman -Qkk", capture("pacman", &["-Qkk"])),
-                ("flatpak list --app", capture("flatpak", &["list", "--app"])),
-                ("snap list", capture("snap", &["list"])),
+                (
+                    "installed packages / repository categories / versions",
+                    package_repository_report(),
+                ),
+                ("update status", pacman_updates_report()),
+                ("explicitly installed packages", capture("pacman", &["-Qe"])),
+                ("orphan candidates", capture("pacman", &["-Qdtq"])),
+                (
+                    "foreign packages / AUR candidates",
+                    capture("pacman", &["-Qm"]),
+                ),
+                ("package file integrity", capture("pacman", &["-Qkk"])),
+                (
+                    "flatpak applications / versions",
+                    capture(
+                        "flatpak",
+                        &[
+                            "list",
+                            "--app",
+                            "--columns=application,version,branch,origin",
+                        ],
+                    ),
+                ),
+                ("snap packages / versions", capture("snap", &["list"])),
+                (
+                    "omarchy package surface",
+                    capture("pacman", &["-Qs", "omarchy"]),
+                ),
             ],
         )
+    }
+}
+
+fn command_stdout(command: &str, args: &[&str]) -> Option<String> {
+    let executable = crate::pathcheck::resolve(command)?;
+    let output = Command::new(executable).args(args).output().ok()?;
+    if !output.status.success() {
+        return None;
+    }
+    Some(String::from_utf8_lossy(&output.stdout).into_owned())
+}
+
+fn pacman_updates_report() -> String {
+    let Some(executable) = crate::pathcheck::resolve("pacman") else {
+        return "_pacman: not installed, skipped_\n".to_string();
+    };
+    match Command::new(executable).args(["-Qu"]).output() {
+        Ok(output) => {
+            let stdout = String::from_utf8_lossy(&output.stdout);
+            let stderr = String::from_utf8_lossy(&output.stderr);
+            if output.status.code() == Some(1)
+                && stdout.trim().is_empty()
+                && stderr.trim().is_empty()
+            {
+                return "No package updates are currently reported by pacman.\n".to_string();
+            }
+
+            let mut report = stdout.into_owned();
+            if !output.status.success() {
+                report.push_str(&format!("\n_[pacman exited with {}]_\n", output.status));
+                if !stderr.trim().is_empty() {
+                    report.push_str(&format!("```\n{}\n```\n", stderr.trim()));
+                }
+            }
+            if report.trim().is_empty() {
+                report.push_str("_pacman returned no update data._\n");
+            }
+            report
+        }
+        Err(error) => format!("_pacman: failed to run ({error})_\n"),
+    }
+}
+
+fn package_repository_report() -> String {
+    let Some(installed_output) = command_stdout("pacman", &["-Q"]) else {
+        return "Package inventory is unavailable; pacman did not return installed package data.\n"
+            .to_string();
+    };
+
+    let mut installed = BTreeMap::new();
+    for line in installed_output.lines() {
+        let mut fields = line.split_whitespace();
+        let Some(name) = fields.next() else {
+            continue;
+        };
+        let Some(version) = fields.next() else {
+            continue;
+        };
+        installed.insert(name.to_string(), version.to_string());
+    }
+
+    let mut repositories = BTreeMap::new();
+    if let Some(repo_output) = command_stdout("pacman", &["-Sl"]) {
+        for line in repo_output.lines() {
+            let mut fields = line.split_whitespace();
+            let Some(repository) = fields.next() else {
+                continue;
+            };
+            let Some(name) = fields.next() else {
+                continue;
+            };
+            if !installed.contains_key(name) {
+                continue;
+            }
+
+            let category = package_repository_category(repository);
+            let replace = repositories
+                .get(name)
+                .map(|existing: &String| {
+                    package_repository_priority(existing) < package_repository_priority(&category)
+                })
+                .unwrap_or(true);
+            if replace {
+                repositories.insert(name.to_string(), category);
+            }
+        }
+    }
+
+    let mut categories: BTreeMap<String, Vec<String>> = BTreeMap::new();
+    for (name, version) in installed {
+        let category = repositories
+            .get(&name)
+            .cloned()
+            .unwrap_or_else(|| "AUR / FOREIGN".to_string());
+        categories
+            .entry(category)
+            .or_default()
+            .push(format!("{name} {version}"));
+    }
+
+    let mut report = String::new();
+    report.push_str("Repository origin is inferred from pacman's local sync metadata; pacman marks unlisted packages as foreign, which can include AUR or locally built packages.\n\n");
+    for category in [
+        "ARCH OFFICIAL",
+        "OMARCHY",
+        "BLACKARCH",
+        "CHAOTIC AUR",
+        "AUR / FOREIGN",
+    ] {
+        let packages = categories.remove(category).unwrap_or_default();
+        report.push_str(&format!("{category} / {} package(s)\n", packages.len()));
+        if packages.is_empty() {
+            report.push_str("  None detected.\n\n");
+        } else {
+            for package in packages {
+                report.push_str("  ");
+                report.push_str(&package);
+                report.push('\n');
+            }
+            report.push('\n');
+        }
+    }
+
+    for (category, packages) in categories {
+        report.push_str(&format!("{category} / {} package(s)\n", packages.len()));
+        for package in packages {
+            report.push_str("  ");
+            report.push_str(&package);
+            report.push('\n');
+        }
+        report.push('\n');
+    }
+    report
+}
+
+fn package_repository_category(repository: &str) -> String {
+    match repository.to_ascii_lowercase().as_str() {
+        "omarchy" => "OMARCHY".to_string(),
+        "blackarch" => "BLACKARCH".to_string(),
+        "chaotic-aur" | "chaotic" => "CHAOTIC AUR".to_string(),
+        "core" | "extra" | "multilib" => "ARCH OFFICIAL".to_string(),
+        other => format!("REPOSITORY / {}", other.to_ascii_uppercase()),
+    }
+}
+
+fn package_repository_priority(category: &str) -> u8 {
+    match category {
+        "CHAOTIC AUR" => 5,
+        "BLACKARCH" => 4,
+        "OMARCHY" => 3,
+        "ARCH OFFICIAL" => 2,
+        _ => 1,
     }
 }
 

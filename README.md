@@ -32,25 +32,25 @@ and filesystem identifiers have been removed from the public previews.
 <table>
   <tr>
     <td width="50%"><img src="assets/screenshots/omniscient-01-system-audit.png" alt="Omniscient system audit overview"></td>
-    <td width="50%"><img src="assets/screenshots/omniscient-02-bluetooth-report.png" alt="Omniscient Bluetooth report viewer"></td>
+    <td width="50%"><img src="assets/screenshots/omniscient-02-fix-center.png" alt="Omniscient Fix Center repair controls"></td>
   </tr>
   <tr>
     <td align="center"><sub>SYSTEM AUDIT / MODULE REGISTRY</sub></td>
-    <td align="center"><sub>REPORT READER / BLUETOOTH</sub></td>
-  </tr>
-  <tr>
-    <td width="50%"><img src="assets/screenshots/omniscient-03-fix-center.png" alt="Omniscient Fix Center repair controls"></td>
-    <td width="50%"><img src="assets/screenshots/omniscient-04-logs-report.png" alt="Omniscient sanitized logs report"></td>
-  </tr>
-  <tr>
     <td align="center"><sub>FIX CENTER / MANUAL OR AUTHORIZED REPAIR</sub></td>
-    <td align="center"><sub>REPORT READER / LOG SIGNAL</sub></td>
   </tr>
   <tr>
-    <td colspan="2" align="center"><img src="assets/screenshots/omniscient-05-snapshots-report.png" alt="Omniscient Btrfs snapshots report"></td>
+    <td width="50%"><img src="assets/screenshots/omniscient-03-suggestions-report.png" alt="Omniscient fix suggestions report viewer"></td>
+    <td width="50%"><img src="assets/screenshots/omniscient-04-storage-report.png" alt="Omniscient sanitized storage report"></td>
   </tr>
   <tr>
-    <td colspan="2" align="center"><sub>REPORT READER / BTRFS SNAPSHOTS</sub></td>
+    <td align="center"><sub>REPORT READER / FIX SUGGESTIONS</sub></td>
+    <td align="center"><sub>REPORT READER / STORAGE MATRIX</sub></td>
+  </tr>
+  <tr>
+    <td colspan="2" align="center"><img src="assets/screenshots/omniscient-05-package-integrity.png" alt="Omniscient package integrity report"></td>
+  </tr>
+  <tr>
+    <td colspan="2" align="center"><sub>REPORT READER / PACKAGE INTEGRITY</sub></td>
   </tr>
 </table>
 
