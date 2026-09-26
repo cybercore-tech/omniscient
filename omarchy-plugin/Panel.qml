@@ -394,6 +394,20 @@ Item {
 
         Rectangle { Layout.fillWidth: true; height: 1; color: "#263445" }
 
+        Flickable {
+          id: auditBodyScroll
+          Layout.fillWidth: true
+          Layout.fillHeight: true
+          Layout.minimumHeight: 0
+          clip: true
+          contentWidth: width
+          contentHeight: auditBodyContent.implicitHeight
+
+          ColumnLayout {
+            id: auditBodyContent
+            width: auditBodyScroll.width
+            spacing: 10
+
         RowLayout {
           Layout.fillWidth: true
           spacing: 12
@@ -465,7 +479,8 @@ Item {
 
         GridLayout {
           Layout.fillWidth: true
-          Layout.preferredHeight: 180
+          Layout.preferredHeight: Math.max(54, Math.ceil(SnapshotReader.modules.length / 3) * 61 - 7)
+          Layout.minimumHeight: Math.max(54, Math.ceil(SnapshotReader.modules.length / 3) * 61 - 7)
           columns: 3
           rowSpacing: 7
           columnSpacing: 7
@@ -634,7 +649,8 @@ Item {
 
         RowLayout {
           Layout.fillWidth: true
-          Layout.fillHeight: true
+          Layout.preferredHeight: 300
+          Layout.minimumHeight: 220
           spacing: 10
 
           Rectangle {
@@ -751,6 +767,9 @@ Item {
             color: "#52e8ff"
             font.family: "monospace"
             font.pixelSize: root.fontMicro
+          }
+        }
+
           }
         }
 
