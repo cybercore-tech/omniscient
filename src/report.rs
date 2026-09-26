@@ -7,6 +7,10 @@ use std::path::Path;
 /// Writes a top-level index tying every module's report together.
 /// The fish version produced N separate markdown files with nothing
 /// linking them — this gives you one file to open first.
+///
+/// # Errors
+///
+/// Returns an error when `SUMMARY.md` cannot be written.
 pub fn write_summary(
     dir: &Path,
     timestamp: &str,

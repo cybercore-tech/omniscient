@@ -5,6 +5,7 @@ use std::path::{Path, PathBuf};
 /// `OMNISCIENT_REPORT_DIR` is an explicit per-user override. Without it,
 /// Omniscient follows the XDG state-directory convention and uses
 /// `$XDG_STATE_HOME/omniscient` or `~/.local/state/omniscient`.
+#[must_use]
 pub fn report_root() -> PathBuf {
     if let Some(path) = non_empty_env("OMNISCIENT_REPORT_DIR") {
         return PathBuf::from(path);
@@ -14,9 +15,7 @@ pub fn report_root() -> PathBuf {
 }
 
 fn state_home() -> PathBuf {
-    non_empty_env("XDG_STATE_HOME")
-        .map(PathBuf::from)
-        .unwrap_or_else(|| home_dir().join(".local/state"))
+    non_empty_env("XDG_STATE_HOME").map_or_else(|| home_dir().join(".local/state"), PathBuf::from)
 }
 
 fn non_empty_env(name: &str) -> Option<String> {
@@ -26,9 +25,7 @@ fn non_empty_env(name: &str) -> Option<String> {
 }
 
 fn home_dir() -> PathBuf {
-    std::env::var_os("HOME")
-        .map(PathBuf::from)
-        .unwrap_or_else(|| Path::new("/").to_path_buf())
+    std::env::var_os("HOME").map_or_else(|| Path::new("/").to_path_buf(), PathBuf::from)
 }
 
 #[cfg(test)]
@@ -75,9 +72,7 @@ mod tests {
     }
 
     fn state_home_for(home: &Path, xdg_state_home: Option<&Path>) -> PathBuf {
-        xdg_state_home
-            .map(Path::to_path_buf)
-            .unwrap_or_else(|| home.join(".local/state"))
+        xdg_state_home.map_or_else(|| home.join(".local/state"), Path::to_path_buf)
     }
 
     fn report_root_for(
@@ -85,8 +80,9 @@ mod tests {
         xdg_state_home: Option<&Path>,
         report_dir: Option<&Path>,
     ) -> PathBuf {
-        report_dir
-            .map(Path::to_path_buf)
-            .unwrap_or_else(|| state_home_for(home, xdg_state_home).join("omniscient"))
+        report_dir.map_or_else(
+            || state_home_for(home, xdg_state_home).join("omniscient"),
+            Path::to_path_buf,
+        )
     }
 }

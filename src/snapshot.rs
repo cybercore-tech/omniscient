@@ -47,6 +47,7 @@ pub struct ModuleSnapshot {
 /// `OMNISCIENT_SNAPSHOT_PATH` is useful for tests and controlled integrations.
 /// Runtime state otherwise lives under `$XDG_RUNTIME_DIR`; the report-state
 /// directory is the portable fallback when a runtime directory is absent.
+#[must_use]
 pub fn path() -> PathBuf {
     if let Some(path) = non_empty_env("OMNISCIENT_SNAPSHOT_PATH") {
         return PathBuf::from(path);
@@ -60,6 +61,11 @@ pub fn path() -> PathBuf {
 }
 
 /// Atomically publish a snapshot so readers never observe partial JSON.
+///
+/// # Errors
+///
+/// Returns an error when the snapshot cannot be serialized, written, or
+/// renamed into place.
 pub fn write(snapshot: &AuditSnapshot) -> Result<PathBuf> {
     let destination = path();
     let parent = destination

@@ -1,3 +1,4 @@
+pub mod capture;
 pub mod elevation;
 pub mod fix;
 pub mod headless;

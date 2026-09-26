@@ -14,18 +14,22 @@ fn rgb(hex: &str) -> String {
     format!("\x1b[38;2;{red};{green};{blue}m")
 }
 
+#[must_use]
 pub fn acid_green() -> String {
     rgb("c8e967")
 }
 
+#[must_use]
 pub fn hot_pink() -> String {
     rgb("fd3e6a")
 }
 
+#[must_use]
 pub fn purple() -> String {
     rgb("9147a8")
 }
 
+#[must_use]
 pub fn cyan() -> String {
     rgb("14b9b5")
 }

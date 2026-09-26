@@ -15,6 +15,11 @@ use std::path::Path;
 /// This path performs the same module work synchronously while publishing
 /// atomic snapshots after every meaningful state transition for the Omarchy
 /// HUD to render in place.
+///
+/// # Errors
+///
+/// Returns an error when elevation fails or reports and snapshots cannot be
+/// written.
 pub fn run() -> Result<()> {
     run_with_selection(None)
 }
@@ -22,6 +27,11 @@ pub fn run() -> Result<()> {
 /// Run only the package-integrity module for a fast, explicit package scan.
 /// This is intentionally separate from the full audit because package
 /// verification can be expensive on large installations.
+///
+/// # Errors
+///
+/// Returns an error when elevation fails or reports and snapshots cannot be
+/// written.
 pub fn run_packages() -> Result<()> {
     run_with_selection(Some(&["packages"]))
 }
@@ -38,6 +48,10 @@ fn run_with_selection(selected_slugs: Option<&[&str]>) -> Result<()> {
     result
 }
 
+#[expect(
+    clippy::too_many_lines,
+    reason = "one linear audit sequence; each step publishes the snapshot the HUD reads"
+)]
 fn run_audit(selected_slugs: Option<&[&str]>) -> Result<()> {
     let modules = modules::all_modules();
     let selected = match selected_slugs {
@@ -112,7 +126,7 @@ fn run_audit(selected_slugs: Option<&[&str]>) -> Result<()> {
 
         let dir = root.join(format!("{}-{timestamp}", module.slug()));
         let result = std::fs::create_dir_all(&dir)
-            .and_then(|_| module.run(&dir).map_err(std::io::Error::other));
+            .and_then(|()| module.run(&dir).map_err(std::io::Error::other));
         match result {
             Ok(()) => {
                 let report_path = dir.join(module.report_filename());

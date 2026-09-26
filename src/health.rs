@@ -1,5 +1,5 @@
 use crate::modules::AuditModule;
-use std::process::Command;
+use std::path::Path;
 
 /// A health score based on real signal, not just whether tools are
 /// installed. The fish version only ever checked tool presence, so a
@@ -11,15 +11,17 @@ pub struct HealthReport {
     pub notes: Vec<String>,
 }
 
+#[must_use]
 pub fn compute(modules: &[Box<dyn AuditModule>]) -> HealthReport {
-    compute_iter(modules.iter().map(|module| module.as_ref()))
+    compute_iter(modules.iter().map(std::convert::AsRef::as_ref))
 }
 
+#[must_use]
 pub fn compute_selected(modules: &[Box<dyn AuditModule>], selected: &[usize]) -> HealthReport {
     compute_iter(
         selected
             .iter()
-            .filter_map(|index| modules.get(*index).map(|module| module.as_ref())),
+            .filter_map(|index| modules.get(*index).map(std::convert::AsRef::as_ref)),
     )
 }
 
@@ -49,18 +51,22 @@ where
 
     // Real signal #1: failed systemd units.
     if let Some(systemctl) = crate::pathcheck::resolve("systemctl") {
-        if let Ok(out) = Command::new(systemctl)
-            .args(["list-units", "--failed", "--no-legend"])
-            .output()
-        {
-            let failed = String::from_utf8_lossy(&out.stdout);
+        if let Ok(out) = crate::capture::run(
+            &systemctl,
+            &["list-units", "--failed", "--no-legend"],
+            probe_limits(),
+        ) {
+            let failed = out.stdout.text();
             let units = failed
                 .lines()
                 .filter_map(|line| line.split_whitespace().next())
                 .filter(|unit| !unit.is_empty())
                 .collect::<Vec<_>>();
             if !units.is_empty() {
-                score -= (units.len() as i32) * 10;
+                let penalty = i32::try_from(units.len())
+                    .unwrap_or(i32::MAX)
+                    .saturating_mul(10);
+                score = score.saturating_sub(penalty);
                 notes.push(format!("failed systemd units: {}", units.join(", ")));
             }
         }
@@ -69,11 +75,10 @@ where
     // Real signal #2: SMART health status on any disk that reports it.
     if smart_requested && crate::pathcheck::exists("smartctl") {
         if let Some(lsblk) = crate::pathcheck::resolve("lsblk") {
-            if let Ok(out) = Command::new(lsblk)
-                .args(["-dn", "-o", "NAME,TYPE"])
-                .output()
+            if let Ok(out) =
+                crate::capture::run(&lsblk, &["-dn", "-o", "NAME,TYPE"], probe_limits())
             {
-                let disks = String::from_utf8_lossy(&out.stdout);
+                let disks = out.stdout.text();
                 for line in disks.lines() {
                     let mut fields = line.split_whitespace();
                     let Some(disk) = fields.next() else {
@@ -88,14 +93,16 @@ where
                     let smartctl = smartctl.to_string_lossy().into_owned();
                     let elevated_args = crate::elevation::args(&smartctl, &["-H", &dev]);
                     let smart = if crate::elevation::is_privileged() {
-                        Command::new(&smartctl).args(["-H", &dev]).output()
+                        crate::capture::run(Path::new(&smartctl), &["-H", &dev], probe_limits())
                     } else {
-                        Command::new(crate::elevation::program())
-                            .args(elevated_args)
-                            .output()
+                        crate::capture::run(
+                            Path::new(crate::elevation::program()),
+                            &elevated_args,
+                            probe_limits(),
+                        )
                     };
                     if let Ok(smart) = smart {
-                        let text = String::from_utf8_lossy(&smart.stdout);
+                        let text = smart.stdout.text();
                         if text.contains("FAILED") {
                             score -= 25;
                             notes.push(format!("SMART health check FAILED on {dev}"));
@@ -109,5 +116,13 @@ where
     HealthReport {
         score: score.max(0),
         notes,
+    }
+}
+
+/// Health probes answer quickly and print little; bound them anyway.
+fn probe_limits() -> crate::capture::Limits {
+    crate::capture::Limits {
+        timeout: std::time::Duration::from_secs(60),
+        retain_bytes: 1024 * 1024,
     }
 }

@@ -1,5 +1,6 @@
 use anyhow::{Context, Result};
 use std::collections::{BTreeMap, HashSet};
+use std::fmt::Write as _;
 use std::fs::File;
 use std::io::Write;
 use std::path::Path;
@@ -33,28 +34,52 @@ pub trait AuditModule {
     fn requires_sudo(&self) -> bool {
         false
     }
+    /// Runs the module and writes its report into `dir`.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error when the report cannot be written.
     fn run(&self, dir: &Path) -> Result<()>;
 }
 
-/// Runs a command, returning combined stdout (+ a note if it failed
-/// or wasn't found) rather than silently swallowing errors the way
-/// `2>/dev/null` did in the fish version.
+/// Runs a command, returning its bounded, cleaned stdout (+ a note if it
+/// failed, timed out, or wasn't found) rather than silently swallowing
+/// errors the way `2>/dev/null` did in the fish version.
 fn capture(cmd: &str, args: &[&str]) -> String {
+    capture_with(cmd, args, crate::capture::Limits::default())
+}
+
+fn capture_with(cmd: &str, args: &[&str], limits: crate::capture::Limits) -> String {
     let Some(executable) = crate::pathcheck::resolve(cmd) else {
         return format!("_{cmd}: not installed, skipped_\n");
     };
-    match Command::new(executable).args(args).output() {
+    match crate::capture::run(&executable, args, limits) {
         Ok(out) => {
-            let mut s = String::from_utf8_lossy(&out.stdout).into_owned();
-            if !out.status.success() {
-                let err = String::from_utf8_lossy(&out.stderr);
-                s.push_str(&format!("\n_[{cmd} exited with {}]_\n", out.status));
+            let mut s = crate::capture::bound_text(
+                &out.stdout.text(),
+                out.stdout.dropped(),
+                crate::capture::MAX_SECTION_BYTES,
+                crate::capture::MAX_SECTION_LINES,
+            );
+            if out.timed_out {
+                let _ = write!(
+                    s,
+                    "\n_[{cmd} timed out after {}s and was stopped]_\n",
+                    limits.timeout.as_secs()
+                );
+            } else if !out.success() {
+                let status = out.status.map_or_else(
+                    || "an unknown status".to_owned(),
+                    |status| status.to_string(),
+                );
+                let _ = write!(s, "\n_[{cmd} exited with {status}]_\n");
+                let err = crate::capture::bound_text(&out.stderr.text(), 0, 16 * 1024, 200);
                 if !err.trim().is_empty() {
-                    s.push_str(&format!("```\n{}\n```\n", err.trim()));
+                    let _ = writeln!(s, "{}", err.trim());
                 }
             }
             if s.trim().is_empty() {
-                s.push_str(&format!("_{cmd} returned no data._\n"));
+                s = format!("_{cmd} returned no data._\n");
             }
             s
         }
@@ -74,6 +99,10 @@ fn capture_privileged(command: &str, args: &[&str]) -> String {
     capture(crate::elevation::program(), &elevated_args)
 }
 
+/// Most bytes of one module report. Sections are already bounded by
+/// [`crate::capture::MAX_SECTION_BYTES`]; this caps a report with many of them.
+pub const MAX_REPORT_BYTES: usize = 2 * 1024 * 1024;
+
 fn write_report<S: AsRef<str>>(
     dir: &Path,
     filename: &str,
@@ -82,17 +111,37 @@ fn write_report<S: AsRef<str>>(
 ) -> Result<()> {
     let path = dir.join(filename);
     let mut f = File::create(&path).with_context(|| format!("creating {}", path.display()))?;
-    writeln!(f, "# {} {title}\n", report_emoji(title))?;
-    for (heading, body) in sections {
-        writeln!(f, "## {}\n", heading.as_ref())?;
-        writeln!(f, "```\n{}\n```\n", body.trim_end())?;
-    }
+    f.write_all(render_report(title, sections).as_bytes())?;
     Ok(())
+}
+
+/// Renders a module report, bounding every section and the whole report so
+/// no report can grow past [`MAX_REPORT_BYTES`] (plus its headings).
+fn render_report<S: AsRef<str>>(title: &str, sections: &[(S, String)]) -> String {
+    let mut out = format!("# {} {title}\n\n", report_emoji(title));
+    let mut budget = MAX_REPORT_BYTES;
+    for (heading, body) in sections {
+        let heading = crate::capture::sanitize(heading.as_ref()).replace('\n', " ");
+        let _ = write!(out, "## {heading}\n\n");
+        if budget == 0 {
+            out.push_str("_omitted: the report reached its size limit_\n\n");
+            continue;
+        }
+        let body = crate::capture::bound_text(
+            body.trim_end(),
+            0,
+            budget.min(crate::capture::MAX_SECTION_BYTES),
+            crate::capture::MAX_SECTION_LINES,
+        );
+        budget = budget.saturating_sub(body.len());
+        let _ = write!(out, "```\n{}\n```\n\n", body.trim_end());
+    }
+    out
 }
 
 fn report_emoji(title: &str) -> &'static str {
     match title {
-        "HARDWARE CORE" => "🖥️",
+        "HARDWARE CORE" | "OMARCHY SURFACE" => "🖥️",
         "STORAGE MATRIX" => "💾",
         "BTRFS SNAPSHOTS" => "📸",
         "NETWORK" => "🌐",
@@ -108,7 +157,6 @@ fn report_emoji(title: &str) -> &'static str {
         "RECOVERY READINESS" => "🧰",
         "RELIABILITY SIGNALS" => "📈",
         "PERFORMANCE PULSE" => "⚡",
-        "OMARCHY SURFACE" => "🖥️",
         _ => "🛰️",
     }
 }
@@ -573,9 +621,7 @@ impl AuditModule for Accounts {
 }
 
 fn home_path(path: &str) -> String {
-    std::env::var("HOME")
-        .map(|home| format!("{home}/{path}"))
-        .unwrap_or_else(|_| path.to_string())
+    std::env::var("HOME").map_or_else(|_| path.to_string(), |home| format!("{home}/{path}"))
 }
 
 pub struct Persistence;
@@ -687,7 +733,17 @@ impl AuditModule for PackageIntegrity {
                     "foreign packages / AUR candidates",
                     capture("pacman", &["-Qm"]),
                 ),
-                ("package file integrity", capture("pacman", &["-Qkk"])),
+                (
+                    "package file integrity",
+                    capture_with(
+                        "pacman",
+                        &["-Qkk"],
+                        crate::capture::Limits {
+                            timeout: std::time::Duration::from_mins(15),
+                            ..crate::capture::Limits::default()
+                        },
+                    ),
+                ),
                 (
                     "flatpak applications / versions",
                     capture(
@@ -709,39 +765,59 @@ impl AuditModule for PackageIntegrity {
     }
 }
 
+/// Full stdout of a command whose output is parsed, not reported. Output
+/// past 16 MiB (far beyond any package inventory) is treated as a failure
+/// rather than parsed partially.
 fn command_stdout(command: &str, args: &[&str]) -> Option<String> {
     let executable = crate::pathcheck::resolve(command)?;
-    let output = Command::new(executable).args(args).output().ok()?;
-    if !output.status.success() {
+    let limits = crate::capture::Limits {
+        retain_bytes: 16 * 1024 * 1024,
+        ..crate::capture::Limits::default()
+    };
+    let output = crate::capture::run(&executable, args, limits).ok()?;
+    if !output.success() || output.stdout.truncated() {
         return None;
     }
-    Some(String::from_utf8_lossy(&output.stdout).into_owned())
+    Some(output.stdout.text())
 }
 
 fn pacman_updates_report() -> String {
     let Some(executable) = crate::pathcheck::resolve("pacman") else {
         return "_pacman: not installed, skipped_\n".to_string();
     };
-    match Command::new(executable).args(["-Qu"]).output() {
+    match crate::capture::run(&executable, &["-Qu"], crate::capture::Limits::default()) {
         Ok(output) => {
-            let stdout = String::from_utf8_lossy(&output.stdout);
-            let stderr = String::from_utf8_lossy(&output.stderr);
-            if output.status.code() == Some(1)
+            let stdout = output.stdout.text();
+            let stderr = output.stderr.text();
+            if !output.timed_out
+                && output.status.and_then(|status| status.code()) == Some(1)
                 && stdout.trim().is_empty()
                 && stderr.trim().is_empty()
             {
                 return "No package updates are currently reported by pacman.\n".to_string();
             }
 
-            let mut report = stdout.into_owned();
-            if !output.status.success() {
-                report.push_str(&format!("\n_[pacman exited with {}]_\n", output.status));
-                if !stderr.trim().is_empty() {
-                    report.push_str(&format!("```\n{}\n```\n", stderr.trim()));
+            let mut report = crate::capture::bound_text(
+                &stdout,
+                output.stdout.dropped(),
+                crate::capture::MAX_SECTION_BYTES,
+                crate::capture::MAX_SECTION_LINES,
+            );
+            if output.timed_out {
+                report.push_str("\n_[pacman timed out and was stopped]_\n");
+            } else if !output.success() {
+                let status = output.status.map_or_else(
+                    || "an unknown status".to_owned(),
+                    |status| status.to_string(),
+                );
+                let _ = write!(report, "\n_[pacman exited with {status}]_\n");
+                let err = crate::capture::bound_text(&stderr, 0, 16 * 1024, 200);
+                if !err.trim().is_empty() {
+                    let _ = writeln!(report, "{}", err.trim());
                 }
             }
             if report.trim().is_empty() {
-                report.push_str("_pacman returned no update data._\n");
+                "_pacman returned no update data._\n".clone_into(&mut report);
             }
             report
         }
@@ -782,12 +858,9 @@ fn package_repository_report() -> String {
             }
 
             let category = package_repository_category(repository);
-            let replace = repositories
-                .get(name)
-                .map(|existing: &String| {
-                    package_repository_priority(existing) < package_repository_priority(&category)
-                })
-                .unwrap_or(true);
+            let replace = repositories.get(name).is_none_or(|existing: &String| {
+                package_repository_priority(existing) < package_repository_priority(&category)
+            });
             if replace {
                 repositories.insert(name.to_string(), category);
             }
@@ -822,7 +895,7 @@ fn package_repository_report() -> String {
         "AUR / FOREIGN",
     ] {
         let packages = categories.remove(category).unwrap_or_default();
-        report.push_str(&format!("{category} / {} package(s)\n", packages.len()));
+        let _ = writeln!(report, "{category} / {} package(s)", packages.len());
         if packages.is_empty() {
             report.push_str("  None detected.\n\n");
         } else {
@@ -836,7 +909,7 @@ fn package_repository_report() -> String {
     }
 
     for (category, packages) in categories {
-        report.push_str(&format!("{category} / {} package(s)\n", packages.len()));
+        let _ = writeln!(report, "{category} / {} package(s)", packages.len());
         for package in packages {
             report.push_str("  ");
             report.push_str(&package);
@@ -948,7 +1021,15 @@ impl AuditModule for Reliability {
                     "kernel warning and alert journal",
                     capture(
                         "journalctl",
-                        &["-k", "-p", "warning..alert", "-b", "--no-pager"],
+                        &[
+                            "-k",
+                            "-p",
+                            "warning..alert",
+                            "-b",
+                            "-n",
+                            "500",
+                            "--no-pager",
+                        ],
                     ),
                 ),
                 (
@@ -959,6 +1040,8 @@ impl AuditModule for Reliability {
                             "-b",
                             "-g",
                             "oom|out of memory|machine check|hardware error",
+                            "-n",
+                            "500",
                             "--no-pager",
                         ],
                     ),
@@ -1025,7 +1108,13 @@ impl AuditModule for Omarchy {
         "🖥️  Omarchy Surface"
     }
     fn tools(&self) -> &'static [&'static str] {
-        &["omarchy", "hyprctl", "journalctl", "quickshell"]
+        &[
+            "omarchy",
+            "omarchy-debug",
+            "hyprctl",
+            "journalctl",
+            "quickshell",
+        ]
     }
     fn optional_tools(&self) -> &'static [&'static str] {
         self.tools()
@@ -1037,9 +1126,14 @@ impl AuditModule for Omarchy {
             "OMARCHY SURFACE",
             &[
                 ("omarchy version", capture("omarchy", &["version"])),
+                // `omarchy-debug` is the binary behind `omarchy debug`; calling it
+                // directly avoids depending on the dispatcher's routing, which
+                // has rejected `omarchy debug` on some omarchy-dev builds. Its
+                // output includes whole journals (75 MB was observed), so the
+                // bounded capture is what keeps this section usable.
                 (
                     "omarchy debug --no-sudo --print",
-                    capture("omarchy", &["debug", "--no-sudo", "--print"]),
+                    capture("omarchy-debug", &["--no-sudo", "--print"]),
                 ),
                 (
                     "hyprctl configerrors",
@@ -1069,6 +1163,7 @@ impl AuditModule for Omarchy {
 /// health score, and both the full-audit and single-module execution
 /// paths all iterate this same list — nowhere else is the set of
 /// modules spelled out by hand.
+#[must_use]
 pub fn all_modules() -> Vec<Box<dyn AuditModule>> {
     vec![
         Box::new(Hardware),
@@ -1166,5 +1261,98 @@ mod tests {
         assert!(report.contains("## bluetoothctl devices"));
         assert!(!report.trim().is_empty());
         fs::remove_dir_all(directory).expect("remove test report directory");
+    }
+
+    #[test]
+    fn a_huge_section_is_bounded_like_the_75_mb_omarchy_debug_dump() {
+        // Regression: an unbounded `omarchy debug` section produced a 75 MB
+        // report that froze the desktop shell when the HUD opened it.
+        let stack = "                    #0  0x000055d1 in frame () from /usr/lib/libx.so\n";
+        let huge = stack.repeat(453_000);
+        let report = render_report(
+            "OMARCHY SURFACE",
+            &[
+                ("omarchy version", "4.0.0\n".to_owned()),
+                ("omarchy debug", huge),
+            ],
+        );
+        assert!(
+            report.len() < crate::capture::MAX_SECTION_BYTES * 2,
+            "{} bytes",
+            report.len()
+        );
+        assert!(report.lines().count() <= crate::capture::MAX_SECTION_LINES + 20);
+        assert!(report.contains("## omarchy debug"));
+        assert!(report.contains("[omniscient: output truncated / showing "));
+        assert_eq!(report.matches("```").count() % 2, 0, "fences stay balanced");
+    }
+
+    #[test]
+    fn the_whole_report_is_capped_and_later_sections_say_why_they_are_missing() {
+        let big = "x".repeat(200) + "\n";
+        let sections = (0..20)
+            .map(|index| (format!("section {index}"), big.repeat(2_000)))
+            .collect::<Vec<_>>();
+        let report = render_report("LOGS", &sections);
+        assert!(
+            report.len() <= MAX_REPORT_BYTES + 64 * 1024,
+            "{} bytes",
+            report.len()
+        );
+        assert!(
+            report.contains("## section 19"),
+            "every heading is still listed"
+        );
+        assert!(report.contains("_omitted: the report reached its size limit_"));
+        assert_eq!(report.matches("```").count() % 2, 0, "fences stay balanced");
+    }
+
+    #[test]
+    fn section_bodies_cannot_inject_fences_headings_or_escapes() {
+        let report = render_report(
+            "LOGS",
+            &[(
+                "evil\n## injected",
+                "```\n# not a title\n\u{1b}[31mred\u{1b}[0m\n".to_owned(),
+            )],
+        );
+        assert!(report.contains("## evil ## injected\n"));
+        assert!(!report.contains('\u{1b}'));
+        assert_eq!(
+            report.matches("```").count(),
+            2,
+            "only the section's own fence pair"
+        );
+    }
+
+    /// Host check, not part of the default suite: runs the real Omarchy
+    /// module (whose `omarchy debug` section once produced a 75 MB report)
+    /// on this machine. Run with `cargo test -- --ignored real_omarchy`.
+    #[test]
+    #[ignore = "runs real host commands; needs an Omarchy system"]
+    fn real_omarchy_report_is_bounded() {
+        let directory =
+            std::env::temp_dir().join(format!("omniscient-real-{}", std::process::id()));
+        fs::create_dir_all(&directory).expect("create report directory");
+        Omarchy.run(&directory).expect("module runs");
+        let report = fs::read_to_string(directory.join("omarchy.md")).expect("report written");
+        fs::remove_dir_all(&directory).expect("remove report directory");
+        if std::env::var_os("OMNISCIENT_SHOW_REPORT").is_some() {
+            eprintln!("{report}");
+        }
+        eprintln!(
+            "omarchy.md: {} bytes, {} lines",
+            report.len(),
+            report.lines().count()
+        );
+        assert!(
+            report.len() <= MAX_REPORT_BYTES + 64 * 1024,
+            "{} bytes",
+            report.len()
+        );
+        assert!(
+            !report.contains('\u{1b}') && !report.contains('\u{3}'),
+            "control characters removed"
+        );
     }
 }

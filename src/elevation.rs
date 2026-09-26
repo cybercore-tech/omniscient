@@ -21,6 +21,7 @@ pub enum Backend {
     Pkexec,
 }
 
+#[must_use]
 pub fn backend() -> Backend {
     match std::env::var("OMNISCIENT_AUTH")
         .unwrap_or_default()
@@ -32,6 +33,7 @@ pub fn backend() -> Backend {
     }
 }
 
+#[must_use]
 pub fn program() -> &'static str {
     match backend() {
         Backend::Sudo => "/usr/bin/sudo",
@@ -41,27 +43,31 @@ pub fn program() -> &'static str {
 
 /// True while the whole audit is running inside the single authenticated
 /// privileged child used by graphical/HUD runs.
+#[must_use]
 pub fn is_privileged() -> bool {
-    std::env::var("OMNISCIENT_PRIVILEGED")
-        .map(|value| value == "1")
-        .unwrap_or(false)
-        && command_output(ID, &["-u"])
-            .map(|uid| uid == "0")
-            .unwrap_or(false)
+    std::env::var("OMNISCIENT_PRIVILEGED").is_ok_and(|value| value == "1")
+        && command_output(ID, &["-u"]).is_ok_and(|uid| uid == "0")
 }
 
+#[must_use]
 pub fn args<'a>(command: &'a str, args: &[&'a str]) -> Vec<&'a str> {
     let mut elevated = vec![command];
     elevated.extend_from_slice(args);
     elevated
 }
 
+#[must_use]
 pub fn uses_graphical() -> bool {
     backend() == Backend::Pkexec
 }
 
 /// Authenticate once and re-execute the HUD audit as root. Returning `true`
 /// means the caller was the unprivileged parent and the child has completed.
+///
+/// # Errors
+///
+/// Returns an error when authentication is refused or the elevated child
+/// cannot be started or fails.
 pub fn reexec_graphical() -> Result<bool> {
     if !uses_graphical() || is_privileged() {
         return Ok(false);
@@ -109,6 +115,11 @@ pub fn reexec_graphical() -> Result<bool> {
 
 /// Return generated reports and runtime state to the invoking user after the
 /// root child finishes. The paths are explicit and narrowly scoped.
+///
+/// # Errors
+///
+/// Returns an error when the owner is missing or invalid, a path is not
+/// safely user-owned, or ownership cannot be restored.
 pub fn restore_user_files() -> Result<()> {
     if !is_privileged() {
         return Ok(());
@@ -254,6 +265,7 @@ fn chown_path(path: &Path, owner: &str) -> Result<()> {
         .with_context(|| format!("chown failed for {}", path.display()))
 }
 
+#[must_use]
 pub fn label() -> &'static str {
     match backend() {
         Backend::Sudo => "SUDO",

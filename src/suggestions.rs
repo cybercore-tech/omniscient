@@ -21,6 +21,7 @@ pub struct Suggestion {
     pub requires_auth: bool,
 }
 
+#[must_use]
 pub fn from_health(health: &HealthReport) -> Vec<Suggestion> {
     health
         .notes
@@ -29,6 +30,11 @@ pub fn from_health(health: &HealthReport) -> Vec<Suggestion> {
         .collect()
 }
 
+/// Writes `SUGGESTIONS.md` for the audit in `dir` and returns its path.
+///
+/// # Errors
+///
+/// Returns an error when the report cannot be written.
 pub fn write_report(
     dir: &Path,
     timestamp: &str,
@@ -145,7 +151,7 @@ fn suggestion_for_note(note: &str) -> Option<Suggestion> {
 
     if let Some(device) = note.strip_prefix("SMART health check FAILED on ") {
         return Some(Suggestion {
-            id: format!("inspect-smart:{}", device),
+            id: format!("inspect-smart:{device}"),
             severity: "urgent".to_string(),
             title: format!("Investigate SMART failure on {device}"),
             detail: "Back up important data and inspect the drive before attempting repairs."
@@ -228,6 +234,7 @@ fn docs_url_for_tool(tool: &str) -> String {
     }
 }
 
+#[must_use]
 pub fn package_for_tool(tool: &str) -> Option<&'static str> {
     match tool {
         "lshw" => Some("lshw"),

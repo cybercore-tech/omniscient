@@ -4,8 +4,15 @@ use anyhow::{bail, Context, Result};
 use chrono::Local;
 use std::fs::{self, File};
 use std::io::Write;
-use std::process::Command;
+use std::path::Path;
 
+/// Applies one allowlisted repair (`install-tool:<tool>`) and writes a fix
+/// report.
+///
+/// # Errors
+///
+/// Returns an error for a request outside the allowlist, when elevation or
+/// the package install fails, or when the report cannot be written.
 pub fn run(fix_id: &str) -> Result<()> {
     // Validate the complete request before asking for credentials.  An
     // unsupported UI or IPC value must never trigger a needless root prompt.
@@ -35,21 +42,33 @@ fn run_fix(fix_id: &str) -> Result<()> {
     let report_path = fixes_dir.join(format!("install-{tool}-{timestamp}.md"));
     let command_line = format!("pacman -S --needed --noconfirm {package}");
 
+    let limits = crate::capture::Limits {
+        timeout: std::time::Duration::from_mins(15),
+        ..crate::capture::Limits::default()
+    };
     let output = if elevation::is_privileged() {
-        Command::new("/usr/bin/pacman")
-            .args(["-S", "--needed", "--noconfirm", package])
-            .output()
-            .context("running pacman")?
+        crate::capture::run(
+            Path::new("/usr/bin/pacman"),
+            &["-S", "--needed", "--noconfirm", package],
+            limits,
+        )
+        .context("running pacman")?
     } else {
-        Command::new(elevation::program())
-            .args(["/usr/bin/pacman", "-S", "--needed", "--noconfirm", package])
-            .output()
-            .context("running authenticated pacman")?
+        crate::capture::run(
+            Path::new(elevation::program()),
+            &["/usr/bin/pacman", "-S", "--needed", "--noconfirm", package],
+            limits,
+        )
+        .context("running authenticated pacman")?
     };
 
-    let stdout = String::from_utf8_lossy(&output.stdout);
-    let stderr = String::from_utf8_lossy(&output.stderr);
-    let status = if output.status.success() {
+    let transcript = crate::capture::bound_text(
+        &format!("{}{}", output.stdout.text(), output.stderr.text()),
+        output.stdout.dropped() + output.stderr.dropped(),
+        crate::capture::MAX_SECTION_BYTES,
+        crate::capture::MAX_SECTION_LINES,
+    );
+    let status = if output.success() {
         "COMPLETE"
     } else {
         "FAILED"
@@ -60,7 +79,11 @@ fn run_fix(fix_id: &str) -> Result<()> {
     writeln!(report, "**Status:** {status}")?;
     writeln!(report, "**Fix:** Install `{tool}` via package `{package}`")?;
     writeln!(report, "**Command:** `{command_line}`\n")?;
-    writeln!(report, "## Output\n\n```text\n{stdout}{stderr}\n```\n")?;
+    writeln!(
+        report,
+        "## Output\n\n```text\n{}\n```\n",
+        transcript.trim_end()
+    )?;
     writeln!(
         report,
         "- [Manual page](https://man.archlinux.org/man/{tool}.1.en)"
@@ -71,7 +94,7 @@ fn run_fix(fix_id: &str) -> Result<()> {
     )?;
 
     println!("FIX REPORT / {}", report_path.display());
-    if !output.status.success() {
+    if !output.success() {
         bail!("fix failed with {status}; see {}", report_path.display());
     }
     Ok(())

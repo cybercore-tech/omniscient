@@ -5,12 +5,14 @@ use std::path::{Path, PathBuf};
 /// A minimal stand-in for the `which` crate: this project only ever
 /// needs a yes/no answer, not the resolved path, so a small local
 /// search avoids pulling in an extra dependency for one boolean check.
+#[must_use]
 pub fn exists(cmd: &str) -> bool {
     resolve(cmd).is_some()
 }
 
 /// Resolve only executable files from a fixed, system-owned search path.
 /// This keeps privileged probes from inheriting a user-writable PATH entry.
+#[must_use]
 pub fn resolve(cmd: &str) -> Option<PathBuf> {
     if cmd.contains('/') {
         let path = PathBuf::from(cmd);

@@ -51,14 +51,12 @@ impl UiPalette {
     fn detect() -> Self {
         let locale = ["LC_ALL", "LC_CTYPE", "LANG"]
             .into_iter()
-            .filter_map(|key| std::env::var(key).ok())
-            .next()
+            .find_map(|key| std::env::var(key).ok())
             .unwrap_or_default()
             .to_ascii_lowercase();
         let unicode = locale.contains("utf-8") || locale.contains("utf8");
         let true_color = std::env::var("COLORTERM")
-            .map(|value| value.contains("truecolor") || value.contains("24bit"))
-            .unwrap_or(false);
+            .is_ok_and(|value| value.contains("truecolor") || value.contains("24bit"));
         if true_color {
             Self {
                 unicode,
@@ -228,6 +226,12 @@ impl App {
     }
 }
 
+/// Runs the interactive dashboard.
+///
+/// # Errors
+///
+/// Returns an error when stdout is not a terminal or the terminal cannot be
+/// set up or restored.
 pub fn run() -> Result<()> {
     if !io::stdout().is_terminal() {
         anyhow::bail!("omniscient requires an interactive terminal");
@@ -329,7 +333,7 @@ fn handle_key(
                 };
             }
         }
-        KeyCode::Char('a') | KeyCode::Char('A') => {
+        KeyCode::Char('a' | 'A') => {
             let select = app.selected_count() != app.modules.len();
             for module in &mut app.modules {
                 module.selected = select;
@@ -345,7 +349,7 @@ fn handle_key(
                 "SELECTION CLEARED"
             });
         }
-        KeyCode::Char('r') | KeyCode::Char('R') => {
+        KeyCode::Char('r' | 'R') => {
             app.reset();
         }
         KeyCode::Tab => {
@@ -437,13 +441,13 @@ fn suspend_for_sudo(terminal: &mut Terminal<CrosstermBackend<Stdout>>) -> Result
 
 fn spawn_worker(selected: Vec<usize>, full: bool) -> Receiver<WorkerMessage> {
     let (tx, rx) = mpsc::channel();
-    thread::spawn(move || worker(selected, full, tx));
+    thread::spawn(move || worker(&selected, full, &tx));
     rx
 }
 
-fn worker(selected: Vec<usize>, full: bool, tx: Sender<WorkerMessage>) {
+fn worker(selected: &[usize], full: bool, tx: &Sender<WorkerMessage>) {
     let modules = modules::all_modules();
-    let health = health::compute_selected(&modules, &selected);
+    let health = health::compute_selected(&modules, selected);
     let _ = tx.send(WorkerMessage::Health(health.clone()));
     let _ = tx.send(WorkerMessage::Log(format!(
         "HEALTH / baseline score {}/100",
@@ -479,7 +483,7 @@ fn worker(selected: Vec<usize>, full: bool, tx: Sender<WorkerMessage>) {
         )));
         let dir = root.join(format!("{}-{timestamp}", module.slug()));
         let result = std::fs::create_dir_all(&dir)
-            .and_then(|_| module.run(&dir).map_err(std::io::Error::other));
+            .and_then(|()| module.run(&dir).map_err(std::io::Error::other));
         match result {
             Ok(()) => {
                 let relative = format!(
@@ -659,6 +663,10 @@ fn draw(frame: &mut Frame, app: &App, palette: UiPalette) {
     draw_footer(frame, vertical[2], app, palette);
 }
 
+#[expect(
+    clippy::too_many_lines,
+    reason = "one declarative header layout; splitting it scatters the widget tree"
+)]
 fn draw_header(frame: &mut Frame, area: Rect, app: &App, palette: UiPalette) {
     let header = Layout::default()
         .direction(Direction::Vertical)
@@ -677,11 +685,10 @@ fn draw_header(frame: &mut Frame, area: Rect, app: &App, palette: UiPalette) {
     } else {
         (glyph(palette, "●", "*").to_owned() + " READY", palette.cyan)
     };
-    let score = app
-        .health
-        .as_ref()
-        .map(|health| format!("{}/100", health.score))
-        .unwrap_or_else(|| "—/100".to_string());
+    let score = app.health.as_ref().map_or_else(
+        || "—/100".to_string(),
+        |health| format!("{}/100", health.score),
+    );
     let lines = vec![
         Line::from(vec![
             Span::styled(
@@ -734,13 +741,11 @@ fn draw_header(frame: &mut Frame, area: Rect, app: &App, palette: UiPalette) {
         .iter()
         .filter(|module| module.selected && module.state == ModuleState::Complete)
         .count();
-    let ratio = if selected == 0 {
-        0.0
-    } else {
-        completed as f64 / selected as f64
-    };
-    let progress_width = header[1].width.saturating_sub(4) as usize;
-    let filled = (progress_width as f64 * ratio).round() as usize;
+    let progress_width = usize::from(header[1].width.saturating_sub(4));
+    // Integer rounding of progress_width * completed / selected.
+    let filled = (progress_width * completed + selected / 2)
+        .checked_div(selected)
+        .unwrap_or(0);
     let (full, empty) = if palette.unicode {
         ("█", "░")
     } else {
@@ -846,9 +851,9 @@ fn draw_live(frame: &mut Frame, area: Rect, app: &App, palette: UiPalette) {
         .collect::<Vec<_>>();
     if app.running {
         let pulse = if palette.unicode {
-            ["·", "·", ":", "∙", "•", "∙", ":", "·"][app.tick as usize % 8]
+            ["·", "·", ":", "∙", "•", "∙", ":", "·"][pulse_frame(app.tick)]
         } else {
-            [".", ".", ":", "+", "*", "+", ":", "."][app.tick as usize % 8]
+            [".", ".", ":", "+", "*", "+", ":", "."][pulse_frame(app.tick)]
         };
         lines.push(Line::from(Span::styled(
             format!("  SCAN PULSE {pulse}"),
@@ -1052,4 +1057,9 @@ fn glyph(palette: UiPalette, unicode: &'static str, ascii: &'static str) -> &'st
 
 fn hostname() -> String {
     std::env::var("HOSTNAME").unwrap_or_else(|_| "unknown-host".to_string())
+}
+
+/// Index into an eight-frame animation for a tick counter.
+fn pulse_frame(tick: u64) -> usize {
+    usize::try_from(tick % 8).unwrap_or(0)
 }
