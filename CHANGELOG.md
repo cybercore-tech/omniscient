@@ -4,8 +4,20 @@ All notable changes to Omniscient are documented here.
 
 ## [Unreleased]
 
+### Added
+
+- Cybercore scrollbars (`HudScrollBar.qml`) on every scrollable HUD view: the
+  panel body, report index, report view, full report view, suggestions, fix
+  queue and fix details. Shown only when content overflows.
+
 ### Fixed
 
+- Code blocks in the report viewer were mangled (`20:/b>/font>14:00 …`): the
+  highlighter chained regex replacements over its own HTML, so later rules
+  matched inside earlier tags. It is now a single-pass tokenizer that escapes
+  each piece once, `'` is escaped in links, and journal timestamps are no
+  longer taken for `Label:` headings. A harness invariant (highlighting must
+  never change the text) guards it.
 - **The HUD could freeze the Omarchy desktop shell.** Opening a module report
   loaded the whole file into the shell and rendered it on the UI thread; a
   75 MB `omarchy.md` pushed the shell past 11 GB. The plugin now reads at most

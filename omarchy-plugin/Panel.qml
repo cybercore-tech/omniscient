@@ -1,6 +1,7 @@
 pragma ComponentBehavior: Bound
 
 import QtQuick
+import QtQuick.Controls.Basic
 import QtQuick.Layouts
 import Quickshell
 import Quickshell.Io
@@ -301,6 +302,7 @@ Item {
       .replace(/</g, "&lt;")
       .replace(/>/g, "&gt;")
       .replace(/\"/g, "&quot;")
+      .replace(/'/g, "&#39;")
   }
 
   function inlineMarkdown(value) {
@@ -311,24 +313,51 @@ Item {
     return html
   }
 
+  function colored(color, text, bold) {
+    var body = root.escapeHtml(text)
+    return "<font color='" + color + "'>" + (bold ? "<b>" + body + "</b>" : body) + "</font>"
+  }
+
+  // Colours the tokens of plain text in ONE pass and escapes every piece
+  // exactly once. Chained regex replacements over already-built HTML used to
+  // match inside the tags earlier rules had inserted (a path rule turned
+  // "</b>" into "/b>" text), mangling every code block.
+  function highlightTokens(text, baseColor) {
+    var pattern = /(https?:\/\/[^\s<>"']+)|(\/\/[A-Za-z0-9._-]+|\/[A-Za-z0-9._~:@%+\-]+(?:\/[A-Za-z0-9._~:@%+\-]+)*)|\b(UPDATE AVAILABLE)\b|\b(CURRENT|PASS|COMPLETE|READY|HEALTHY)\b|\b(FAILED|ERROR|WARNING|WARN)\b|\b([Uu]navailable|UNAVAILABLE|[Nn]ot installed|NOT INSTALLED|[Ss]kipped|SKIPPED|[Uu]nknown|UNKNOWN|N\/A)\b|\b([0-9]+(?::[0-9]+)?(?:\.[0-9A-Za-z]+)+(?:[-+][0-9A-Za-z.+:~_-]+)?)\b/g
+    var out = []
+    var last = 0
+    var match
+    var plain = function(part) {
+      if (part.length) out.push(baseColor ? root.colored(baseColor, part, false) : root.escapeHtml(part))
+    }
+    while ((match = pattern.exec(text)) !== null) {
+      if (match[0].length === 0) { pattern.lastIndex++; continue }
+      plain(text.substring(last, match.index))
+      if (match[1] || match[2]) out.push(root.colored("#52e8ff", match[0], false))
+      else if (match[3]) out.push(root.colored("#ffb454", match[0], true))
+      else if (match[4]) out.push(root.colored("#c8e967", match[0], true))
+      else if (match[5]) out.push(root.colored("#ff667d", match[0], true))
+      else if (match[6]) out.push(root.colored("#ff8f70", match[0], true))
+      else out.push(root.colored("#ffb454", match[0], false))
+      last = match.index + match[0].length
+    }
+    plain(text.substring(last))
+    return out.join("")
+  }
+
   function highlightCode(value) {
-    var html = escapeHtml(value)
-    html = html.replace(/^(\s*)([A-Za-z][A-Za-z0-9 _()\/.+-]{1,38}:)(.*)$/, "$1<font color='#52e8ff'><b>$2</b></font><font color='#f2f5f7'>$3</font>")
-    html = html.replace(/^(\s*)([├└│─┬┌┐┘└▶▸◆●•]+)(.*)$/, "$1<font color='#a56bff'><b>$2</b></font><font color='#c8d2e8'>$3</font>")
-    html = html.replace(/^(\s*)(lscpu|lsblk|pacman|systemctl|journalctl|dmesg|flatpak|snap|findmnt|btrfs|smartctl)(\b.*)$/, "$1<font color='#52e8ff'><b>$2</b></font><font color='#c8d2e8'>$3</font>")
-    html = html.replace(/^(ARCH OFFICIAL|OMARCHY|BLACKARCH|CHAOTIC AUR|AUR \/ FOREIGN)(\s*\/.*)$/,
-      "<font color='#52e8ff'><b>$1</b></font><font color='#8290a4'>$2</font>")
-    html = html.replace(/\b(UPDATE AVAILABLE)\b/g, "<font color='#ffb454'><b>$1</b></font>")
-    html = html.replace(/\b(CURRENT)\b/g, "<font color='#c8e967'><b>$1</b></font>")
-    html = html.replace(/\b(FAILED|ERROR|WARNING|WARN)\b/g, "<font color='#ff667d'><b>$1</b></font>")
-    html = html.replace(/\b(PASS|COMPLETE|READY|HEALTHY)\b/g, "<font color='#c8e967'><b>$1</b></font>")
-    html = html.replace(/\b(unavailable|not installed|skipped|unknown|N\/A)\b/gi, "<font color='#ff8f70'><b>$1</b></font>")
-    html = html.replace(/\b([0-9]+(?::[0-9]+)?(?:\.[0-9A-Za-z]+)+(?:[-+][0-9A-Za-z.+:~_-]+)?)\b/g,
-      "<font color='#ffb454'>$1</font>")
-    html = html.replace(/(\/\/[A-Za-z0-9._-]+|\/[A-Za-z0-9._~:@%+\-]+(?:\/[A-Za-z0-9._~:@%+\-]+)*)/g,
-      "<font color='#52e8ff'>$1</font>")
-    html = html.replace(/(https?:\/\/[^\s<]+)/g, "<font color='#52e8ff'>$1</font>")
-    return html
+    var line = String(value)
+    var m = /^(ARCH OFFICIAL|OMARCHY|BLACKARCH|CHAOTIC AUR|AUR \/ FOREIGN)(\s*\/.*)$/.exec(line)
+    if (m) return root.colored("#52e8ff", m[1], true) + root.colored("#8290a4", m[2], false)
+    m = /^(\s*)(lscpu|lsblk|pacman|systemctl|journalctl|dmesg|flatpak|snap|findmnt|btrfs|smartctl)(\b.*)$/.exec(line)
+    if (m) return root.escapeHtml(m[1]) + root.colored("#52e8ff", m[2], true) + root.highlightTokens(m[3], "#c8d2e8")
+    m = /^(\s*)([├└│─┬┌┐┘▶▸◆●•]+)(.*)$/.exec(line)
+    if (m) return root.escapeHtml(m[1]) + root.colored("#a56bff", m[2], true) + root.highlightTokens(m[3], "#c8d2e8")
+    // "Label: value" lines; the colon must be followed by a space or the end,
+    // so timestamps such as "Sep 25 20:14:00" are not taken for labels.
+    m = /^(\s*)([A-Za-z][A-Za-z0-9 _()\/.+-]{0,38}:)(\s.*|)$/.exec(line)
+    if (m) return root.escapeHtml(m[1]) + root.colored("#52e8ff", m[2], true) + root.highlightTokens(m[3], "#f2f5f7")
+    return root.highlightTokens(line, "")
   }
 
   function markdownToRichText(value, startsInCode) {
@@ -569,7 +598,7 @@ Item {
     Text {
       id: chunkText
       required property var modelData
-      width: ListView.view ? ListView.view.width : 0
+      width: ListView.view ? ListView.view.width - 12 : 0
       text: root.chunkHtml(chunkText.modelData)
       color: "#c8d2e8"
       font.family: "monospace"
@@ -655,6 +684,8 @@ Item {
         Rectangle { Layout.fillWidth: true; implicitHeight: 1; color: "#263445" }
 
         Flickable {
+          boundsBehavior: Flickable.StopAtBounds
+          ScrollBar.vertical: HudScrollBar {}
           id: auditBodyScroll
           Layout.fillWidth: true
           Layout.fillHeight: true
@@ -665,7 +696,7 @@ Item {
 
           ColumnLayout {
             id: auditBodyContent
-            width: auditBodyScroll.width
+            width: auditBodyScroll.width - 14
             spacing: 10
 
         RowLayout {
@@ -916,6 +947,8 @@ Item {
             }
 
             ListView {
+              boundsBehavior: Flickable.StopAtBounds
+              ScrollBar.vertical: HudScrollBar {}
               Layout.fillWidth: true
               Layout.fillHeight: true
               clip: true
@@ -927,7 +960,7 @@ Item {
                 required property var modelData
                 required property int index
                 property bool hovered: false
-                width: ListView.view.width
+                width: ListView.view.width - 12
                 height: 62
                 color: hovered ? "#1a2940" : (suggestionRow.index % 2 ? "#0f1725" : "#111824")
                 border.width: 1
@@ -1030,6 +1063,8 @@ Item {
               spacing: 6
               Text { text: "REPORT INDEX / URGENCY"; color: "#52e8ff"; font.family: "monospace"; font.pixelSize: root.fontSection; font.bold: true }
               ListView {
+                boundsBehavior: Flickable.StopAtBounds
+                ScrollBar.vertical: HudScrollBar {}
                 Layout.fillWidth: true
                 Layout.fillHeight: true
                 clip: true
@@ -1039,7 +1074,7 @@ Item {
                   required property var modelData
                   required property int index
                   property bool hovered: false
-                  width: ListView.view.width
+                  width: ListView.view.width - 12
                   height: 32
                   color: hovered || root.selectedReport === String(reportRow.modelData)
                     ? "#1a2940"
@@ -1150,6 +1185,8 @@ Item {
                 }
               }
               ListView {
+                boundsBehavior: Flickable.StopAtBounds
+                ScrollBar.vertical: HudScrollBar {}
                 id: reportBodyList
                 Layout.fillWidth: true
                 Layout.fillHeight: true
@@ -1349,6 +1386,8 @@ Item {
           Rectangle { Layout.fillWidth: true; implicitHeight: 1; color: "#263445" }
 
           ListView {
+            boundsBehavior: Flickable.StopAtBounds
+            ScrollBar.vertical: HudScrollBar {}
             Layout.fillWidth: true
             Layout.fillHeight: true
             clip: true
@@ -1431,6 +1470,8 @@ Item {
                 spacing: 7
                 Text { text: "REPAIR QUEUE"; color: "#52e8ff"; font.family: "monospace"; font.pixelSize: root.fontSection; font.bold: true }
                 ListView {
+                  boundsBehavior: Flickable.StopAtBounds
+                  ScrollBar.vertical: HudScrollBar {}
                   Layout.fillWidth: true
                   Layout.fillHeight: true
                   clip: true
@@ -1440,7 +1481,7 @@ Item {
                     id: fixRow
                     required property var modelData
                     required property int index
-                    width: ListView.view.width
+                    width: ListView.view.width - 12
                     height: 64
                     color: root.selectedFixIndex === fixRow.index ? "#1c2b43" : "#111824"
                     border.width: 1
@@ -1479,6 +1520,8 @@ Item {
               border.color: SnapshotReader.suggestions.length ? SnapshotReader.severityColor(String(root.selectedFix().severity || "attention")) : "#263445"
 
               Flickable {
+                boundsBehavior: Flickable.StopAtBounds
+                ScrollBar.vertical: HudScrollBar {}
                 id: fixDetailScroll
                 anchors.fill: parent
                 anchors.margins: 16
@@ -1488,7 +1531,7 @@ Item {
 
                 ColumnLayout {
                   id: fixDetailColumn
-                  width: fixDetailScroll.width
+                  width: fixDetailScroll.width - 14
                   spacing: 10
 
                 Text {

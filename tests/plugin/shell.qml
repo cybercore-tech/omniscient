@@ -58,7 +58,8 @@ ShellRoot {
   // `until` (optional) is polled before moving on, up to `wait`.
   readonly property var steps: [
     { name: "load", wait: 3000, run: function() {
-      harness.check(harness.panel !== null, "panel loads")
+      harness.check(harness.panel !== null, "panel loads", panelLoader.status === Loader.Error ? "Loader.Error" : "")
+      if (harness.panel === null) harness.stepIndex = harness.steps.length - 1
     } },
     { name: "initial snapshot", wait: 7000, run: function() {
       harness.check(SnapshotReader.available, "initial snapshot is read", SnapshotReader.errorMessage)
@@ -152,6 +153,32 @@ ShellRoot {
       harness.check(html.indexOf("<script") < 0, "script tags are escaped")
       var long = p.markdownToRichText("x".repeat(p.maxLineChars * 5), false)
       harness.check(long.length < p.maxLineChars + 200, "an over-long line is capped", long.length)
+      // Highlighting may colour text but must never change it: strip the
+      // tags, decode the entities, and the original line must come back.
+      var samples = [
+        "Sep 25 20:14:00 host kernel[0]: ├─ WARNING ✓ /usr/lib/libx.so.1.2.0 0x55d1 pacman 6.1.0-3 unavailable → https://example.invalid/0",
+        "  System:",
+        "Kernel: 6.18.49-3-lts arch: x86_64 </b></font> <script>alert('x')</script> & \"quoted\"",
+        "ARCH OFFICIAL / 2 packages",
+        "OMARCHY / omarchy-keyring 1.0-1 UPDATE AVAILABLE",
+        "pacman -Qkk: 0 missing files, N/A, CURRENT, FAILED",
+        "│  ├── /etc/fstab // not installed skipped UNKNOWN 1:2.3.4+git~r1",
+        "url http://a/b/c?x='1'&y=2 PASS COMPLETE READY HEALTHY ERROR WARN"
+      ]
+      var decode = function(html) {
+        return html.replace(/<[^>]*>/g, "").replace(/&lt;/g, "<").replace(/&gt;/g, ">")
+          .replace(/&quot;/g, "\"").replace(/&#39;/g, "'").replace(/&amp;/g, "&")
+      }
+      var altered = samples.filter(function(line) { return decode(p.highlightCode(line)) !== line })
+      harness.check(altered.length === 0, "highlighting never alters the text", altered.join(" | "))
+      var balanced = samples.every(function(line) {
+        var h = p.highlightCode(line)
+        return (h.match(/<font /g) || []).length === (h.match(/<\/font>/g) || []).length
+          && (h.match(/<b>/g) || []).length === (h.match(/<\/b>/g) || []).length
+      })
+      harness.check(balanced, "highlighted markup is balanced")
+      var timestamp = p.highlightCode(samples[0])
+      harness.check(timestamp.indexOf("<b>Sep 25 20:</b>") < 0, "a timestamp is not taken for a label")
       var fenced = p.markdownToRichText("inside <b>", true)
       harness.check(fenced.indexOf("#7dd3fc") >= 0, "a chunk that starts inside a code block renders as code")
       p.activateReportLink("javascript:alert(1)")
@@ -190,7 +217,7 @@ ShellRoot {
       harness.mark("soak-end")
       harness.check(harness.soakRewrites >= harness.soakSeconds / 3, "snapshot rewritten during soak", harness.soakRewrites)
       harness.check(harness.maxGap < harness.stallBudget, "UI thread stays responsive during soak", Math.round(harness.maxGap) + " ms")
-      harness.panel.close()
+      if (harness.panel !== null) harness.panel.close()
     } }
   ]
 

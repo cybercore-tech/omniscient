@@ -86,7 +86,22 @@ for key in ("schemaVersion", "id", "name", "version", "kinds", "entryPoints"):
 for kind, entry in manifest["entryPoints"].items():
     assert "/" not in entry and not entry.startswith("."), f"unsafe entry point {entry}"
     assert os.path.isfile(os.path.join(root, entry)), f"missing entry point {entry}"
+# The plugin folder has a qmldir, which makes it a declared module: a QML
+# file that is neither an entry point nor listed there cannot be used by
+# name, and the panel fails to load at runtime (qmllint does not catch it).
+entries = set(manifest["entryPoints"].values())
+listed = set()
+for line in open(os.path.join(root, "qmldir")):
+    parts = line.split()
+    if parts and parts[-1].endswith(".qml"):
+        listed.add(parts[-1])
+for name in sorted(os.listdir(root)):
+    if name.endswith(".qml"):
+        assert name in entries or name in listed, f"{name} is neither an entry point nor listed in qmldir"
+for name in listed:
+    assert os.path.isfile(os.path.join(root, name)), f"qmldir lists missing {name}"
 print("  manifest ok:", manifest["id"], manifest["version"])
+print("  qmldir ok:", ", ".join(sorted(listed)))
 PY
 
 [[ "$MODE" == lint ]] && { printf '\n[plugin-gate] PASS / lint\n'; exit 0; }
@@ -170,6 +185,7 @@ while kill -0 "$qs_pid" 2>/dev/null; do
     [[ -n "$rss" ]] && printf '%s %s\n' "$(date +%s%3N)" "$rss" >>"$samples"
     if ((SECONDS > deadline)); then
         kill "$qs_pid" 2>/dev/null || true
+        sed -E 's/\x1b\[[0-9;]*m//g' "$log" | tail -n 40
         fail "harness timed out"
     fi
     sleep 0.25

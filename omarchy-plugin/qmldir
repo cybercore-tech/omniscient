@@ -1,2 +1,3 @@
 module io.github.cybercore-tech.omniscient
 singleton SnapshotReader 1.0 SnapshotReader.qml
+HudScrollBar 1.0 HudScrollBar.qml

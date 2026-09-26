@@ -3,7 +3,7 @@
 ![gate](https://img.shields.io/badge/gate-scripts%2Fgate.sh%20full-52e8ff)
 ![clippy](https://img.shields.io/badge/clippy-pedantic%20denied-a56bff)
 ![qmllint](https://img.shields.io/badge/qmllint-all%20categories%2C%200%20warnings-c8e967)
-![harness](https://img.shields.io/badge/plugin%20harness-51%20checks-ffb454)
+![harness](https://img.shields.io/badge/plugin%20harness-54%20checks-ffb454)
 
 Omniscient has two halves that fail in different ways: a Rust audit engine
 that runs system commands, and a Quickshell plugin that runs **inside the
@@ -44,6 +44,9 @@ OMNI_TEST_WAYLAND_DISPLAY=wayland-2 OMNI_SOAK_SECONDS=20 ./scripts/plugin-gate.s
 Every warning category `qmllint` knows is raised to `warning`, and
 `--max-warnings 0` makes any finding fatal. The plugin uses
 `pragma ComponentBehavior: Bound` with typed `required` delegate properties.
+The gate also requires every plugin `.qml` file to be a manifest entry point
+or registered in `qmldir`: the folder is a declared module, so an unlisted
+helper type makes the panel fail to load at runtime, which qmllint misses.
 Three line-level `// qmllint disable` directives remain, each for a proven
 tooling gap rather than a code problem, and each is commented at its site:
 `PanelWindow` (only its interface is in Quickshell's type description),
@@ -61,7 +64,7 @@ inside a systemd scope capped at 1 GiB with no swap. The live desktop shell is
 never touched. `tests/plugin/make-fixtures.py` generates synthetic fixtures;
 no real audit data is used or committed.
 
-The harness (`tests/plugin/shell.qml`) checks, among 51 assertions:
+The harness (`tests/plugin/shell.qml`) checks, among 54 assertions:
 
 - an unchanged snapshot causes **no** reassignment (the old reader replaced
   every list every second, rebuilding every delegate);
@@ -71,6 +74,10 @@ The harness (`tests/plugin/shell.qml`) checks, among 51 assertions:
   detected in UTF-8 bytes and explained, only on-screen chunks get delegates,
   and the UI thread never stalls past 600 ms;
 - the hidden full-report view holds no model until opened, and releases it;
+- code highlighting never alters text: for tricky lines (journal
+  timestamps, paths, versions, URLs, HTML-like text, quotes) stripping the
+  tags and decoding entities must give back the original line, and the
+  markup must be balanced;
 - report HTML is escaped, `javascript:`/`file:` links are ignored, and
   `https:` links require confirmation;
 - report paths outside Omniscient, relative paths and `..` traversal are refused;

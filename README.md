@@ -343,7 +343,7 @@ Run the local quality gates before publishing a change:
 test target, doctests, rustdoc with warnings fatal, shell syntax checks, the
 static security gate, and the plugin gate. The plugin gate lints every QML
 file with Qt 6 `qmllint` at the strictest setting, then loads the real plugin
-into a nested, memory-capped compositor and drives it through 51 checks,
+into a nested, memory-capped compositor and drives it through 54 checks,
 including a 75 MB report and a memory soak. It needs an Omarchy session, so CI
 skips it (`OMNISCIENT_SKIP_PLUGIN_GATE=1`); run it locally before pushing.
 See [docs/TESTING.md](docs/TESTING.md).
