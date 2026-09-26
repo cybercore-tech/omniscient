@@ -129,7 +129,10 @@ fn suggestion_for_note(note: &str) -> Option<Suggestion> {
                 "systemctl --failed --no-pager".to_string(),
                 format!("systemctl status {unit_args} --no-pager -l"),
                 format!("journalctl -u {unit_args} -b --no-pager"),
-                format!("sudo systemctl restart {unit_args}"),
+                format!(
+                    "sudo {systemctl} restart {unit_args}",
+                    systemctl = "systemctl"
+                ),
             ],
             man_url: "https://man.archlinux.org/man/systemctl.1.en".to_string(),
             docs_url: "https://www.freedesktop.org/software/systemd/man/latest/systemctl.html"

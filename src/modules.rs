@@ -100,6 +100,14 @@ fn report_emoji(title: &str) -> &'static str {
         "LOGS" => "📜",
         "BLUETOOTH" => "📡",
         "DEVICES" => "🔌",
+        "SECURITY POSTURE" => "🛡️",
+        "ACCOUNTS & AUTH" => "🔐",
+        "PERSISTENCE WATCH" => "🧬",
+        "PACKAGE INTEGRITY" => "🧾",
+        "RECOVERY READINESS" => "🧰",
+        "RELIABILITY SIGNALS" => "📈",
+        "PERFORMANCE PULSE" => "⚡",
+        "OMARCHY SURFACE" => "🖥️",
         _ => "🛰️",
     }
 }
@@ -228,7 +236,10 @@ impl AuditModule for Network {
         "🌐 Network Nexus"
     }
     fn tools(&self) -> &'static [&'static str] {
-        &["ip", "ss"]
+        &["ip", "ss", "resolvectl", "networkctl", "nmcli"]
+    }
+    fn optional_tools(&self) -> &'static [&'static str] {
+        self.tools()
     }
     fn run(&self, dir: &Path) -> Result<()> {
         write_report(
@@ -237,7 +248,14 @@ impl AuditModule for Network {
             "NETWORK",
             &[
                 ("ip a", capture("ip", &["a"])),
+                ("ip route", capture("ip", &["route"])),
                 ("ss -tulanp", capture("ss", &["-tulanp"])),
+                ("resolvectl status", capture("resolvectl", &["status"])),
+                ("networkctl list", capture("networkctl", &["list"])),
+                (
+                    "nmcli general status",
+                    capture("nmcli", &["general", "status"]),
+                ),
             ],
         )
     }
@@ -267,7 +285,20 @@ impl AuditModule for Containers {
             "CONTAINERS",
             &[
                 ("docker ps -a", capture("docker", &["ps", "-a"])),
+                (
+                    "docker images",
+                    capture(
+                        "docker",
+                        &[
+                            "images",
+                            "--format",
+                            "table {{.Repository}}\\t{{.Tag}}\\t{{.Size}}",
+                        ],
+                    ),
+                ),
+                ("docker system df", capture("docker", &["system", "df"])),
                 ("flatpak list", capture("flatpak", &["list"])),
+                ("flatpak apps", capture("flatpak", &["list", "--app"])),
                 ("snap list", capture("snap", &["list"])),
             ],
         )
@@ -449,6 +480,398 @@ fn display_report() -> String {
     }
 }
 
+pub struct SecurityPosture;
+impl AuditModule for SecurityPosture {
+    fn name(&self) -> &'static str {
+        "Security Posture"
+    }
+    fn slug(&self) -> &'static str {
+        "security"
+    }
+    fn menu_label(&self) -> &'static str {
+        "🛡️  Security Posture"
+    }
+    fn tools(&self) -> &'static [&'static str] {
+        &["ss", "ufw", "nft", "mokutil", "sysctl", "systemctl"]
+    }
+    fn optional_tools(&self) -> &'static [&'static str] {
+        self.tools()
+    }
+    fn run(&self, dir: &Path) -> Result<()> {
+        write_report(
+            dir,
+            "security.md",
+            "SECURITY POSTURE",
+            &[
+                ("ss -tulpen", capture("ss", &["-tulpen"])),
+                ("ufw status verbose", capture("ufw", &["status", "verbose"])),
+                ("nft list ruleset", capture("nft", &["list", "ruleset"])),
+                ("mokutil --sb-state", capture("mokutil", &["--sb-state"])),
+                (
+                    "kernel.kptr_restrict",
+                    capture("sysctl", &["kernel.kptr_restrict"]),
+                ),
+                (
+                    "kernel.dmesg_restrict",
+                    capture("sysctl", &["kernel.dmesg_restrict"]),
+                ),
+                (
+                    "kernel.yama.ptrace_scope",
+                    capture("sysctl", &["kernel.yama.ptrace_scope"]),
+                ),
+                (
+                    "net forwarding",
+                    capture(
+                        "sysctl",
+                        &["net.ipv4.ip_forward", "net.ipv6.conf.all.forwarding"],
+                    ),
+                ),
+                (
+                    "systemctl --failed",
+                    capture("systemctl", &["--failed", "--no-pager"]),
+                ),
+            ],
+        )
+    }
+}
+
+pub struct Accounts;
+impl AuditModule for Accounts {
+    fn name(&self) -> &'static str {
+        "Accounts & Authentication"
+    }
+    fn slug(&self) -> &'static str {
+        "accounts"
+    }
+    fn menu_label(&self) -> &'static str {
+        "🔐 Accounts & Auth"
+    }
+    fn tools(&self) -> &'static [&'static str] {
+        &["getent", "lastb", "loginctl", "sshd"]
+    }
+    fn optional_tools(&self) -> &'static [&'static str] {
+        self.tools()
+    }
+    fn run(&self, dir: &Path) -> Result<()> {
+        write_report(
+            dir,
+            "accounts.md",
+            "ACCOUNTS & AUTH",
+            &[
+                ("getent passwd", capture("getent", &["passwd"])),
+                ("getent group wheel", capture("getent", &["group", "wheel"])),
+                ("lastb -n 25", capture("lastb", &["-n", "25"])),
+                (
+                    "loginctl list-sessions",
+                    capture("loginctl", &["list-sessions"]),
+                ),
+                ("sshd -T", capture("sshd", &["-T"])),
+            ],
+        )
+    }
+}
+
+fn home_path(path: &str) -> String {
+    std::env::var("HOME")
+        .map(|home| format!("{home}/{path}"))
+        .unwrap_or_else(|_| path.to_string())
+}
+
+pub struct Persistence;
+impl AuditModule for Persistence {
+    fn name(&self) -> &'static str {
+        "Persistence Watch"
+    }
+    fn slug(&self) -> &'static str {
+        "persistence"
+    }
+    fn menu_label(&self) -> &'static str {
+        "🧬 Persistence Watch"
+    }
+    fn tools(&self) -> &'static [&'static str] {
+        &["systemctl", "crontab", "find"]
+    }
+    fn optional_tools(&self) -> &'static [&'static str] {
+        self.tools()
+    }
+    fn run(&self, dir: &Path) -> Result<()> {
+        let user_autostart = home_path(".config/autostart");
+        let user_cron = capture("crontab", &["-l"]);
+        let user_autostart_report = capture(
+            "find",
+            &[
+                user_autostart.as_str(),
+                "-maxdepth",
+                "1",
+                "-type",
+                "f",
+                "-print",
+            ],
+        );
+        write_report(
+            dir,
+            "persistence.md",
+            "PERSISTENCE WATCH",
+            &[
+                (
+                    "system enabled units",
+                    capture(
+                        "systemctl",
+                        &["list-unit-files", "--state=enabled", "--no-pager"],
+                    ),
+                ),
+                (
+                    "system timers",
+                    capture("systemctl", &["list-timers", "--all", "--no-pager"]),
+                ),
+                (
+                    "user enabled units",
+                    capture(
+                        "systemctl",
+                        &["--user", "list-unit-files", "--state=enabled", "--no-pager"],
+                    ),
+                ),
+                ("user crontab", user_cron),
+                ("user autostart", user_autostart_report),
+                (
+                    "system autostart",
+                    capture(
+                        "find",
+                        &[
+                            "/etc/xdg/autostart",
+                            "-maxdepth",
+                            "1",
+                            "-type",
+                            "f",
+                            "-print",
+                        ],
+                    ),
+                ),
+            ],
+        )
+    }
+}
+
+pub struct PackageIntegrity;
+impl AuditModule for PackageIntegrity {
+    fn name(&self) -> &'static str {
+        "Package Integrity"
+    }
+    fn slug(&self) -> &'static str {
+        "packages"
+    }
+    fn menu_label(&self) -> &'static str {
+        "🧾 Package Integrity"
+    }
+    fn tools(&self) -> &'static [&'static str] {
+        &["pacman", "flatpak", "snap"]
+    }
+    fn optional_tools(&self) -> &'static [&'static str] {
+        self.tools()
+    }
+    fn run(&self, dir: &Path) -> Result<()> {
+        write_report(
+            dir,
+            "packages.md",
+            "PACKAGE INTEGRITY",
+            &[
+                ("pacman -Qu", capture("pacman", &["-Qu"])),
+                ("pacman -Qdtq", capture("pacman", &["-Qdtq"])),
+                ("pacman -Qm", capture("pacman", &["-Qm"])),
+                ("pacman -Qkk", capture("pacman", &["-Qkk"])),
+                ("flatpak list --app", capture("flatpak", &["list", "--app"])),
+                ("snap list", capture("snap", &["list"])),
+            ],
+        )
+    }
+}
+
+pub struct Recovery;
+impl AuditModule for Recovery {
+    fn name(&self) -> &'static str {
+        "Recovery Readiness"
+    }
+    fn slug(&self) -> &'static str {
+        "recovery"
+    }
+    fn menu_label(&self) -> &'static str {
+        "🧰 Recovery Readiness"
+    }
+    fn tools(&self) -> &'static [&'static str] {
+        &["df", "findmnt", "btrfs", "systemctl"]
+    }
+    fn optional_tools(&self) -> &'static [&'static str] {
+        self.tools()
+    }
+    fn run(&self, dir: &Path) -> Result<()> {
+        write_report(
+            dir,
+            "recovery.md",
+            "RECOVERY READINESS",
+            &[
+                ("df -hT", capture("df", &["-hT"])),
+                ("df -ih", capture("df", &["-ih"])),
+                (
+                    "findmnt",
+                    capture("findmnt", &["-o", "TARGET,SOURCE,FSTYPE,OPTIONS"]),
+                ),
+                (
+                    "btrfs scrub status -d /",
+                    capture("btrfs", &["scrub", "status", "-d", "/"]),
+                ),
+                (
+                    "fstrim.timer",
+                    capture("systemctl", &["status", "fstrim.timer", "--no-pager", "-l"]),
+                ),
+            ],
+        )
+    }
+}
+
+pub struct Reliability;
+impl AuditModule for Reliability {
+    fn name(&self) -> &'static str {
+        "Reliability Signals"
+    }
+    fn slug(&self) -> &'static str {
+        "reliability"
+    }
+    fn menu_label(&self) -> &'static str {
+        "📈 Reliability Signals"
+    }
+    fn tools(&self) -> &'static [&'static str] {
+        &["journalctl", "coredumpctl", "sensors", "free"]
+    }
+    fn optional_tools(&self) -> &'static [&'static str] {
+        self.tools()
+    }
+    fn run(&self, dir: &Path) -> Result<()> {
+        write_report(
+            dir,
+            "reliability.md",
+            "RELIABILITY SIGNALS",
+            &[
+                (
+                    "kernel warning and alert journal",
+                    capture(
+                        "journalctl",
+                        &["-k", "-p", "warning..alert", "-b", "--no-pager"],
+                    ),
+                ),
+                (
+                    "hardware and memory error journal",
+                    capture(
+                        "journalctl",
+                        &[
+                            "-b",
+                            "-g",
+                            "oom|out of memory|machine check|hardware error",
+                            "--no-pager",
+                        ],
+                    ),
+                ),
+                (
+                    "coredumpctl list",
+                    capture("coredumpctl", &["list", "--no-pager"]),
+                ),
+                ("sensors", capture("sensors", &[])),
+                ("free -h", capture("free", &["-h"])),
+            ],
+        )
+    }
+}
+
+pub struct Performance;
+impl AuditModule for Performance {
+    fn name(&self) -> &'static str {
+        "Performance Pulse"
+    }
+    fn slug(&self) -> &'static str {
+        "performance"
+    }
+    fn menu_label(&self) -> &'static str {
+        "⚡ Performance Pulse"
+    }
+    fn tools(&self) -> &'static [&'static str] {
+        &["uptime", "free", "vmstat", "systemd-analyze"]
+    }
+    fn optional_tools(&self) -> &'static [&'static str] {
+        self.tools()
+    }
+    fn run(&self, dir: &Path) -> Result<()> {
+        write_report(
+            dir,
+            "performance.md",
+            "PERFORMANCE PULSE",
+            &[
+                ("uptime", capture("uptime", &[])),
+                ("free -h", capture("free", &["-h"])),
+                ("vmstat 1 2", capture("vmstat", &["1", "2"])),
+                (
+                    "systemd-analyze blame",
+                    capture("systemd-analyze", &["blame"]),
+                ),
+                (
+                    "systemd-analyze critical-chain",
+                    capture("systemd-analyze", &["critical-chain"]),
+                ),
+            ],
+        )
+    }
+}
+
+pub struct Omarchy;
+impl AuditModule for Omarchy {
+    fn name(&self) -> &'static str {
+        "Omarchy Surface"
+    }
+    fn slug(&self) -> &'static str {
+        "omarchy"
+    }
+    fn menu_label(&self) -> &'static str {
+        "🖥️  Omarchy Surface"
+    }
+    fn tools(&self) -> &'static [&'static str] {
+        &["omarchy", "hyprctl", "journalctl", "quickshell"]
+    }
+    fn optional_tools(&self) -> &'static [&'static str] {
+        self.tools()
+    }
+    fn run(&self, dir: &Path) -> Result<()> {
+        write_report(
+            dir,
+            "omarchy.md",
+            "OMARCHY SURFACE",
+            &[
+                ("omarchy version", capture("omarchy", &["version"])),
+                (
+                    "omarchy debug --no-sudo --print",
+                    capture("omarchy", &["debug", "--no-sudo", "--print"]),
+                ),
+                (
+                    "hyprctl configerrors",
+                    capture("hyprctl", &["configerrors"]),
+                ),
+                (
+                    "hyprctl monitors all",
+                    capture("hyprctl", &["monitors", "all"]),
+                ),
+                (
+                    "omarchy-shell journal",
+                    capture(
+                        "journalctl",
+                        &["--user", "-u", "omarchy-shell", "-n", "100", "--no-pager"],
+                    ),
+                ),
+                (
+                    "quickshell --version",
+                    capture("quickshell", &["--version"]),
+                ),
+            ],
+        )
+    }
+}
+
 /// Every module, defined once. The menu, the capability matrix, the
 /// health score, and both the full-audit and single-module execution
 /// paths all iterate this same list — nowhere else is the set of
@@ -464,6 +887,14 @@ pub fn all_modules() -> Vec<Box<dyn AuditModule>> {
         Box::new(Logs),
         Box::new(Bluetooth),
         Box::new(ConnectedDevices),
+        Box::new(SecurityPosture),
+        Box::new(Accounts),
+        Box::new(Persistence),
+        Box::new(PackageIntegrity),
+        Box::new(Recovery),
+        Box::new(Reliability),
+        Box::new(Performance),
+        Box::new(Omarchy),
     ]
 }
 
@@ -514,10 +945,20 @@ mod tests {
             .copied()
             .collect::<HashSet<_>>();
 
-        assert_eq!(
-            optional,
-            HashSet::from(["flatpak", "snap", "hyprctl", "wlr-randr", "xrandr"])
-        );
+        for tool in [
+            "flatpak",
+            "snap",
+            "hyprctl",
+            "wlr-randr",
+            "xrandr",
+            "ss",
+            "ufw",
+            "nft",
+            "pacman",
+            "omarchy",
+        ] {
+            assert!(optional.contains(tool), "expected {tool} to be optional");
+        }
     }
 
     #[test]

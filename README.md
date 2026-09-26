@@ -10,8 +10,9 @@ a readable, repeatable report.
 
 It began as a fish-shell cyberdeck with an ASCII HUD, a scanning animation,
 and an `fzf` module picker. The Rust release keeps that spirit while adding a
-structured module registry, live progress, health scoring, capability
-detection, privilege handling, and linked Markdown reports.
+structured 17-module registry across 10 conservative diagnostic domains, live
+progress, health scoring, capability detection, privilege handling, and linked
+Markdown reports.
 
 > ⟦⟐⟧ **INITIAL RELEASE // v0.1.0** — The first public-ready Cybercore
 > Omniscient release: tested, packaged, and automated through GitHub Actions.
@@ -168,6 +169,14 @@ does not impose an Omarchy or desktop-specific default on other users.
 - ⟦KL⟧ **Kernel Logs** — recent journal entries and kernel messages
 - ⟦BD⟧ **Bluetooth Deep** — visible Bluetooth devices
 - ⟦IO⟧ **Connected Devices** — displays and audio devices
+- ⟦SP⟧ **Security Posture** — listeners, firewall state, kernel posture, and Secure Boot
+- ⟦AA⟧ **Accounts & Auth** — local accounts, failed logins, sessions, and SSH configuration
+- ⟦PW⟧ **Persistence Watch** — enabled units, timers, cron, and autostart entries
+- ⟦PI⟧ **Package Integrity** — updates, orphans, foreign packages, and package verification
+- ⟦RR⟧ **Recovery Readiness** — filesystem capacity, mounts, Btrfs scrub state, and trim
+- ⟦RS⟧ **Reliability Signals** — kernel warnings, hardware errors, coredumps, and sensors
+- ⟦PP⟧ **Performance Pulse** — load, memory, VM pressure, and boot latency
+- ⟦OS⟧ **Omarchy Surface** — Omarchy, Hyprland, Quickshell, and shell diagnostics
 
 The capability matrix marks tools as available, missing, optional, or
 privileged before a scan starts. Missing optional tools are recorded as
@@ -238,7 +247,7 @@ src/lib.rs         module declarations
 src/main.rs        interactive entry point
 src/tui.rs         interactive dashboard, input, worker thread, and progress state
 src/headless.rs    in-panel audit runner and snapshot publishing
-src/modules.rs     AuditModule trait and nine audit modules
+src/modules.rs     AuditModule trait and 17 audit modules across 10 domains
 src/elevation.rs   sudo default and pkexec opt-in backend selection
 src/health.rs      health scoring from system signals
 src/paths.rs       XDG report-path resolution and per-user override
