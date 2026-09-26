@@ -1,9 +1,10 @@
+pragma ComponentBehavior: Bound
+
 import QtQuick
 import QtQuick.Layouts
 import Quickshell
 import Quickshell.Io
 import Quickshell.Wayland
-import qs.Commons
 
 Item {
   id: root
@@ -34,6 +35,24 @@ Item {
   property bool fullReportView: false
   property bool fixCenterOpen: false
   property int selectedFixIndex: 0
+  // Reports are rendered to rich text in JavaScript and laid out by Qt, both
+  // on the shell's UI thread, so cost must not grow with report size. A
+  // 75 MB report once froze the whole desktop. The reader keeps at most
+  // maxReportBytes, and the text is split into chunks shown by ListViews,
+  // which create (render and lay out) only the chunks on screen.
+  readonly property int maxReportBytes: 524288
+  readonly property int chunkLines: 40
+  readonly property int maxLineChars: 2000
+  property bool reportTruncated: false
+  property var reportChunks: []
+  // The full-window view gets a model only while it is open.
+  readonly property var fullReportChunks: root.fullReportView ? root.reportChunks : []
+  // Live chunk delegates across both views; the harness asserts it stays
+  // small no matter how large the report is.
+  property int liveChunkDelegates: 0
+
+  onReportTextChanged: root.chunkReport()
+  onPackageCategoryChanged: root.chunkReport()
 
   function open(payloadJson) {
     root.opened = true
@@ -265,7 +284,7 @@ Item {
 
   function selectPackageCategory(category) {
     root.packageCategory = String(category || "ALL")
-    reportBodyScroll.contentY = 0
+    reportBodyList.positionViewAtBeginning()
   }
 
   function isSafeReportPath(path) {
@@ -312,12 +331,14 @@ Item {
     return html
   }
 
-  function markdownToRichText(value) {
+  function markdownToRichText(value, startsInCode) {
     var lines = String(value || "").split("\n")
     var html = []
-    var inCode = false
+    var inCode = Boolean(startsInCode)
     for (var i = 0; i < lines.length; i++) {
       var line = lines[i]
+      if (line.length > root.maxLineChars)
+        line = line.substring(0, root.maxLineChars) + " …[line truncated]"
       if (line.indexOf("```") === 0) {
         inCode = !inCode
         html.push(inCode
@@ -342,6 +363,62 @@ Item {
       }
     }
     return html.join("")
+  }
+
+  // Splits the visible report into chunks of chunkLines lines. Only string
+  // splitting happens here; rich-text rendering is per visible chunk.
+  function chunkReport() {
+    var text = root.reportText.length ? root.packageReportView() : "SELECT A REPORT TO VIEW IT HERE"
+    var lines = String(text).split("\n")
+    var chunks = []
+    var inCode = false
+    for (var start = 0; start < lines.length; start += root.chunkLines) {
+      var part = lines.slice(start, start + root.chunkLines)
+      chunks.push({ text: part.join("\n"), code: inCode })
+      for (var i = 0; i < part.length; i++) {
+        if (part[i].indexOf("```") === 0) inCode = !inCode
+      }
+    }
+    root.reportChunks = chunks
+  }
+
+  function chunkHtml(chunk) {
+    return chunk ? root.markdownToRichText(chunk.text, chunk.code) : ""
+  }
+
+  // The report text with the package-category filter applied, as displayed.
+  function displayedReport() {
+    var parts = []
+    for (var i = 0; i < root.reportChunks.length; i++) parts.push(root.reportChunks[i].text)
+    return parts.join("\n")
+  }
+
+  // UTF-8 length of a string. `head -c` bounds the read in bytes while
+  // JavaScript counts UTF-16 units, so multibyte reports need this to tell
+  // whether the read was cut.
+  function utf8Length(value) {
+    var bytes = 0
+    for (var i = 0; i < value.length; i++) {
+      var code = value.charCodeAt(i)
+      if (code < 0x80) bytes += 1
+      else if (code < 0x800) bytes += 2
+      else if (code >= 0xd800 && code <= 0xdbff) { bytes += 4; i++ }
+      else bytes += 3
+    }
+    return bytes
+  }
+
+  function acceptReport(raw) {
+    var value = String(raw || "")
+    root.reportTruncated = root.utf8Length(value) > root.maxReportBytes
+    if (root.reportTruncated) {
+      value = value.substring(0, root.maxReportBytes)
+      var lastLine = value.lastIndexOf("\n")
+      if (lastLine > 0) value = value.substring(0, lastLine)
+      value += "\n\n> REPORT TRUNCATED / showing the first " + Math.round(root.maxReportBytes / 1024)
+        + " KiB. The complete report is on disk:\n> " + root.selectedReport
+    }
+    root.reportText = value.trim()
   }
 
   function reportSeverity(path) {
@@ -387,7 +464,7 @@ Item {
     id: auditRunner
     command: ["/usr/bin/env", "OMNISCIENT_AUTH=pkexec", root.omniscientBinary, "--hud"]
     stderr: StdioCollector { id: auditStderr; waitForEnd: true }
-    onExited: function(exitCode) {
+    onExited: function(exitCode) { // qmllint disable signal-handler-parameters
       SnapshotReader.refresh()
       if (exitCode !== 0) {
         root.runnerMessage = auditStderr.text.trim().length
@@ -403,7 +480,7 @@ Item {
     id: packageRunner
     command: ["/usr/bin/env", "OMNISCIENT_AUTH=sudo", root.omniscientBinary, "--packages"]
     stderr: StdioCollector { id: packageStderr; waitForEnd: true }
-    onExited: function(exitCode) {
+    onExited: function(exitCode) { // qmllint disable signal-handler-parameters
       SnapshotReader.refresh()
       root.packageScanFinished = exitCode === 0
       if (exitCode !== 0) {
@@ -423,7 +500,7 @@ Item {
       : ["/usr/bin/true"]
     stdout: StdioCollector { id: fixStdout; waitForEnd: true }
     stderr: StdioCollector { id: fixStderr; waitForEnd: true }
-    onExited: function(exitCode) {
+    onExited: function(exitCode) { // qmllint disable signal-handler-parameters
       SnapshotReader.refresh()
       if (exitCode !== 0) {
         root.fixMessage = fixStderr.text.trim().length
@@ -439,17 +516,19 @@ Item {
 
   Process {
     id: reportReader
-    command: root.selectedReport.length ? ["/usr/bin/cat", root.selectedReport] : ["/usr/bin/true"]
+    command: root.selectedReport.length
+      ? ["/usr/bin/head", "-c", String(root.maxReportBytes + 1), "--", root.selectedReport]
+      : ["/usr/bin/true"]
     stdout: StdioCollector {
       id: reportStdout
       waitForEnd: true
-      onStreamFinished: root.reportText = text.trim()
+      onStreamFinished: root.acceptReport(text)
     }
     stderr: StdioCollector {
       id: reportStderr
       waitForEnd: true
     }
-    onExited: function(exitCode) {
+    onExited: function(exitCode) { // qmllint disable signal-handler-parameters
       if (exitCode !== 0) {
         root.reportText = "REPORT UNAVAILABLE\n\nThe saved report path no longer exists or cannot be read:\n" + root.selectedReport
       }
@@ -484,7 +563,30 @@ Item {
     onTriggered: reportReader.running = true
   }
 
-  PanelWindow {
+  Component {
+    id: reportChunkDelegate
+
+    Text {
+      id: chunkText
+      required property var modelData
+      width: ListView.view ? ListView.view.width : 0
+      text: root.chunkHtml(chunkText.modelData)
+      color: "#c8d2e8"
+      font.family: "monospace"
+      font.pixelSize: root.fontBody
+      wrapMode: Text.Wrap
+      textFormat: Text.RichText
+      onLinkActivated: function(link) { root.activateReportLink(link) }
+      Component.onCompleted: root.liveChunkDelegates++
+      Component.onDestruction: root.liveChunkDelegates--
+    }
+  }
+
+  // Quickshell's type description exports only the PanelWindow interface;
+  // the Wayland implementation is supplied at runtime, so the linter cannot
+  // see that it is creatable. The same applies to QProcess::ExitStatus in
+  // Process.exited, which is why those handlers carry a line-level directive.
+  PanelWindow { // qmllint disable uncreatable-type
     id: panelWindow
     visible: root.opened
     anchors { top: true; bottom: true; left: true; right: true }
@@ -511,7 +613,7 @@ Item {
 
       MouseArea {
         anchors.fill: parent
-        onClicked: mouse.accepted = true
+        onClicked: function(mouse) { mouse.accepted = true }
       }
 
       ColumnLayout {
@@ -522,9 +624,9 @@ Item {
         RowLayout {
           Layout.fillWidth: true
           spacing: 7
-          Rectangle { width: 9; height: 9; radius: 5; color: "#ff4f9a" }
-          Rectangle { width: 9; height: 9; radius: 5; color: "#a56bff" }
-          Rectangle { width: 9; height: 9; radius: 5; color: "#52e8ff" }
+          Rectangle { implicitWidth: 9; implicitHeight: 9; radius: 5; color: "#ff4f9a" }
+          Rectangle { implicitWidth: 9; implicitHeight: 9; radius: 5; color: "#a56bff" }
+          Rectangle { implicitWidth: 9; implicitHeight: 9; radius: 5; color: "#52e8ff" }
           Text {
             text: "OMNISCIENT / SYSTEM AUDIT"
             color: "#f2f5f7"
@@ -535,7 +637,7 @@ Item {
           }
           Item { Layout.fillWidth: true }
           Text {
-            text: stateLabel()
+            text: root.stateLabel()
             color: SnapshotReader.stateColor(SnapshotReader.state)
             font.family: "monospace"
             font.pixelSize: root.fontBody
@@ -550,7 +652,7 @@ Item {
           }
         }
 
-        Rectangle { Layout.fillWidth: true; height: 1; color: "#263445" }
+        Rectangle { Layout.fillWidth: true; implicitHeight: 1; color: "#263445" }
 
         Flickable {
           id: auditBodyScroll
@@ -723,19 +825,22 @@ Item {
           Repeater {
             model: SnapshotReader.modules
             delegate: Rectangle {
+              id: moduleCard
+              required property var modelData
+              required property int index
               property bool hovered: false
               Layout.fillWidth: true
               Layout.preferredHeight: 54
-              color: hovered ? "#1a2940" : (index % 2 ? "#0f1725" : "#111824")
+              color: hovered ? "#1a2940" : (moduleCard.index % 2 ? "#0f1725" : "#111824")
               border.width: 1
               border.color: hovered ? "#52e8ff" : "#263445"
               ColumnLayout {
                 anchors.fill: parent
                 anchors.margins: 9
                 spacing: 2
-                Text { text: String(modelData.name || "").toUpperCase(); color: "#f2f5f7"; font.family: "monospace"; font.pixelSize: root.fontSmall; elide: Text.ElideRight; Layout.fillWidth: true }
-                Text { text: String(modelData.state || "unknown").toUpperCase(); color: root.moduleStateColor(String(modelData.state || "unknown")); font.family: "monospace"; font.pixelSize: root.fontMicro }
-                Text { text: modelData.requires_sudo ? "ELEVATED" : "USER MODE"; color: "#8290a4"; font.family: "monospace"; font.pixelSize: root.fontMicro }
+                Text { text: String(moduleCard.modelData.name || "").toUpperCase(); color: "#f2f5f7"; font.family: "monospace"; font.pixelSize: root.fontSmall; elide: Text.ElideRight; Layout.fillWidth: true }
+                Text { text: String(moduleCard.modelData.state || "unknown").toUpperCase(); color: root.moduleStateColor(String(moduleCard.modelData.state || "unknown")); font.family: "monospace"; font.pixelSize: root.fontMicro }
+                Text { text: moduleCard.modelData.requires_sudo ? "ELEVATED" : "USER MODE"; color: "#8290a4"; font.family: "monospace"; font.pixelSize: root.fontMicro }
               }
               MouseArea {
                 anchors.fill: parent
@@ -743,12 +848,12 @@ Item {
                 hoverEnabled: true
                 preventStealing: true
                 acceptedButtons: Qt.NoButton
-                cursorShape: root.reportForModule(String(modelData.slug || "")).length ? Qt.PointingHandCursor : Qt.ArrowCursor
+                cursorShape: root.reportForModule(String(moduleCard.modelData.slug || "")).length ? Qt.PointingHandCursor : Qt.ArrowCursor
                 onEntered: parent.hovered = true
                 onExited: parent.hovered = false
               }
               TapHandler {
-                onTapped: root.openModuleReport(String(modelData.slug || ""))
+                onTapped: root.openModuleReport(String(moduleCard.modelData.slug || ""))
               }
             }
           }
@@ -818,12 +923,15 @@ Item {
               spacing: 5
 
               delegate: Rectangle {
+                id: suggestionRow
+                required property var modelData
+                required property int index
                 property bool hovered: false
                 width: ListView.view.width
                 height: 62
-                color: hovered ? "#1a2940" : (index % 2 ? "#0f1725" : "#111824")
+                color: hovered ? "#1a2940" : (suggestionRow.index % 2 ? "#0f1725" : "#111824")
                 border.width: 1
-                border.color: hovered ? "#52e8ff" : SnapshotReader.severityColor(String(modelData.severity || "attention"))
+                border.color: hovered ? "#52e8ff" : SnapshotReader.severityColor(String(suggestionRow.modelData.severity || "attention"))
 
                 RowLayout {
                   anchors.fill: parent
@@ -834,8 +942,8 @@ Item {
                     Layout.fillWidth: true
                     spacing: 2
                     Text {
-                      text: String(modelData.severity || "attention").toUpperCase() + " / " + String(modelData.title || "")
-                      color: SnapshotReader.severityColor(String(modelData.severity || "attention"))
+                      text: String(suggestionRow.modelData.severity || "attention").toUpperCase() + " / " + String(suggestionRow.modelData.title || "")
+                      color: SnapshotReader.severityColor(String(suggestionRow.modelData.severity || "attention"))
                       font.family: "monospace"
                       font.pixelSize: root.fontSmall
                       font.bold: true
@@ -843,7 +951,7 @@ Item {
                       Layout.fillWidth: true
                     }
                     Text {
-                      text: String(modelData.detail || "")
+                      text: String(suggestionRow.modelData.detail || "")
                       color: "#c8d2e8"
                       font.family: "monospace"
                       font.pixelSize: root.fontMicro
@@ -851,7 +959,7 @@ Item {
                       Layout.fillWidth: true
                     }
                     Text {
-                      text: "<a href='" + String(modelData.man_url || "") + "'>MAN</a>  <a href='" + String(modelData.docs_url || "") + "'>DOCS</a>"
+                      text: "<a href='" + String(suggestionRow.modelData.man_url || "") + "'>MAN</a>  <a href='" + String(suggestionRow.modelData.docs_url || "") + "'>DOCS</a>"
                       textFormat: Text.RichText
                       color: "#52e8ff"
                       font.family: "monospace"
@@ -861,7 +969,7 @@ Item {
                   }
 
                   Rectangle {
-                    visible: Boolean(modelData.auto_fix)
+                    visible: Boolean(suggestionRow.modelData.auto_fix)
                     Layout.preferredWidth: 118
                     Layout.preferredHeight: 32
                     radius: 3
@@ -879,7 +987,7 @@ Item {
                     MouseArea {
                       anchors.fill: parent
                       cursorShape: Qt.PointingHandCursor
-                      onClicked: root.requestFix(String(modelData.id || ""))
+                      onClicked: root.requestFix(String(suggestionRow.modelData.id || ""))
                     }
                   }
                 }
@@ -927,19 +1035,22 @@ Item {
                 clip: true
                 model: SnapshotReader.reports
                 delegate: Rectangle {
+                  id: reportRow
+                  required property var modelData
+                  required property int index
                   property bool hovered: false
                   width: ListView.view.width
                   height: 32
-                  color: hovered || root.selectedReport === String(modelData)
+                  color: hovered || root.selectedReport === String(reportRow.modelData)
                     ? "#1a2940"
-                    : (index % 2 ? "#0f1725" : "transparent")
+                    : (reportRow.index % 2 ? "#0f1725" : "transparent")
                   border.width: hovered ? 1 : 0
                   border.color: "#52e8ff"
                   Text {
                     anchors.fill: parent
                     anchors.margins: 6
-                    text: root.reportIcon(String(modelData)) + "  " + String(modelData).split("/").pop()
-                    color: SnapshotReader.severityColor(root.reportSeverity(String(modelData)))
+                    text: root.reportIcon(String(reportRow.modelData)) + "  " + String(reportRow.modelData).split("/").pop()
+                    color: SnapshotReader.severityColor(root.reportSeverity(String(reportRow.modelData)))
                     font.family: "monospace"
                     font.pixelSize: root.fontMicro
                     elide: Text.ElideMiddle
@@ -950,7 +1061,7 @@ Item {
                     hoverEnabled: true
                     onEntered: parent.hovered = true
                     onExited: parent.hovered = false
-                    onClicked: root.openReport(String(modelData))
+                    onClicked: root.openReport(String(reportRow.modelData))
                   }
                 }
                 Text {
@@ -1009,21 +1120,23 @@ Item {
                 Repeater {
                   model: root.packageCategories
                   delegate: Rectangle {
+                    id: categoryChip
+                    required property var modelData
                     property bool hovered: false
                     Layout.preferredHeight: 24
                     Layout.preferredWidth: Math.max(42, packageCategoryLabel.implicitWidth + 16)
                     radius: 3
-                    color: hovered || root.packageCategory === modelData ? "#1a2940" : "#111824"
+                    color: hovered || root.packageCategory === categoryChip.modelData ? "#1a2940" : "#111824"
                     border.width: 1
-                    border.color: root.packageCategory === modelData ? "#52e8ff" : (hovered ? "#ffb454" : "#263445")
+                    border.color: root.packageCategory === categoryChip.modelData ? "#52e8ff" : (hovered ? "#ffb454" : "#263445")
                     Text {
                       id: packageCategoryLabel
                       anchors.centerIn: parent
-                      text: String(modelData)
-                      color: root.packageCategory === modelData ? "#52e8ff" : "#c8d2e8"
+                      text: String(categoryChip.modelData)
+                      color: root.packageCategory === categoryChip.modelData ? "#52e8ff" : "#c8d2e8"
                       font.family: "monospace"
                       font.pixelSize: root.fontMicro
-                      font.bold: root.packageCategory === modelData
+                      font.bold: root.packageCategory === categoryChip.modelData
                     }
                     MouseArea {
                       anchors.fill: parent
@@ -1031,29 +1144,20 @@ Item {
                       cursorShape: Qt.PointingHandCursor
                       onEntered: parent.hovered = true
                       onExited: parent.hovered = false
-                      onClicked: root.selectPackageCategory(String(modelData))
+                      onClicked: root.selectPackageCategory(String(categoryChip.modelData))
                     }
                   }
                 }
               }
-              Flickable {
-                id: reportBodyScroll
+              ListView {
+                id: reportBodyList
                 Layout.fillWidth: true
                 Layout.fillHeight: true
                 clip: true
-                contentWidth: width
-                contentHeight: reportBody.paintedHeight
-                Text {
-                  id: reportBody
-                  width: parent.width
-                  text: root.markdownToRichText(root.reportText.length ? root.packageReportView() : "SELECT A REPORT TO VIEW IT HERE")
-                  color: "#c8d2e8"
-                  font.family: "monospace"
-                  font.pixelSize: root.fontBody
-                  wrapMode: Text.Wrap
-                  textFormat: Text.RichText
-                  onLinkActivated: function(link) { root.activateReportLink(link) }
-                }
+                reuseItems: false
+                cacheBuffer: 400
+                model: root.reportChunks
+                delegate: reportChunkDelegate
               }
             }
           }
@@ -1079,465 +1183,460 @@ Item {
 
           }
         }
+      }
+
+      Rectangle {
+        visible: root.confirmingFix
+        anchors.fill: parent
+        z: 40
+        color: "#d9080b12"
+        border.width: 1
+        border.color: "#ffb454"
+
+        MouseArea { anchors.fill: parent }
 
         Rectangle {
-          visible: root.confirmingFix
-          anchors.fill: parent
-          z: 40
-          color: "#d9080b12"
+          width: Math.min(560, parent.width - 48)
+          height: 190
+          anchors.centerIn: parent
+          color: "#111824"
           border.width: 1
           border.color: "#ffb454"
 
-          MouseArea { anchors.fill: parent }
-
-          Rectangle {
-            width: Math.min(560, parent.width - 48)
-            height: 190
-            anchors.centerIn: parent
-            color: "#111824"
-            border.width: 1
-            border.color: "#ffb454"
-
-            ColumnLayout {
-              anchors.fill: parent
-              anchors.margins: 20
-              spacing: 10
-              Text {
-                text: "CONFIRM REPAIR ACTION"
-                color: "#ffb454"
-                font.family: "monospace"
-                font.pixelSize: root.fontTitle
-                font.bold: true
-              }
-              Text {
-                Layout.fillWidth: true
-                text: "This will run an allowlisted package repair with elevated permissions.\n\nFinding: " + String(root.selectedFix().title || root.pendingFixId) + "\nCommand: " + String(root.selectedFix().command || "not available") + "\n\nAllow only if you reviewed the explanation and proposed command. A fix report will be written after completion."
-                color: "#c8d2e8"
-                font.family: "monospace"
-                font.pixelSize: root.fontBody
-                wrapMode: Text.Wrap
-              }
-              RowLayout {
-                Layout.fillWidth: true
-                Item { Layout.fillWidth: true }
-                Rectangle {
-                  Layout.preferredWidth: 110
-                  Layout.preferredHeight: 36
-                  color: "#1d2634"
-                  border.width: 1
-                  border.color: "#8290a4"
-                  Text { anchors.centerIn: parent; text: "CANCEL"; color: "#c8d2e8"; font.family: "monospace"; font.pixelSize: root.fontSmall }
-                  MouseArea { anchors.fill: parent; cursorShape: Qt.PointingHandCursor; onClicked: root.confirmingFix = false }
-                }
-                Rectangle {
-                  Layout.preferredWidth: 150
-                  Layout.preferredHeight: 36
-                  color: "#2a2417"
-                  border.width: 1
-                  border.color: "#ffb454"
-                  Text { anchors.centerIn: parent; text: "AUTHORIZE / APPLY"; color: "#ffb454"; font.family: "monospace"; font.pixelSize: root.fontSmall; font.bold: true }
-                  MouseArea { anchors.fill: parent; cursorShape: Qt.PointingHandCursor; onClicked: root.applyFix() }
-                }
-              }
-            }
-          }
-        }
-
-        Rectangle {
-          visible: root.confirmingHelp
-          anchors.fill: parent
-          z: 45
-          color: "#d9080b12"
-          border.width: 1
-          border.color: "#52e8ff"
-
-          MouseArea { anchors.fill: parent }
-
-          Rectangle {
-            width: Math.min(600, parent.width - 48)
-            height: 230
-            anchors.centerIn: parent
-            color: "#111824"
-            border.width: 1
-            border.color: "#52e8ff"
-
-            ColumnLayout {
-              anchors.fill: parent
-              anchors.margins: 20
-              spacing: 10
-              Text {
-                text: "ALLOW EXTERNAL REFERENCE"
-                color: "#52e8ff"
-                font.family: "monospace"
-                font.pixelSize: root.fontTitle
-                font.bold: true
-              }
-              Text {
-                Layout.fillWidth: true
-                text: "Open the " + root.pendingHelpLabel + " in your browser?\n\nThis is read-only guidance. It will not run a repair or grant permissions.\n\n" + root.pendingHelpUrl
-                color: "#c8d2e8"
-                font.family: "monospace"
-                font.pixelSize: root.fontBody
-                wrapMode: Text.Wrap
-              }
-              RowLayout {
-                Layout.fillWidth: true
-                Item { Layout.fillWidth: true }
-                Rectangle {
-                  Layout.preferredWidth: 110
-                  Layout.preferredHeight: 36
-                  color: "#1d2634"
-                  border.width: 1
-                  border.color: "#8290a4"
-                  Text { anchors.centerIn: parent; text: "DENY / CLOSE"; color: "#c8d2e8"; font.family: "monospace"; font.pixelSize: root.fontSmall }
-                  MouseArea { anchors.fill: parent; cursorShape: Qt.PointingHandCursor; onClicked: root.confirmingHelp = false }
-                }
-                Rectangle {
-                  Layout.preferredWidth: 145
-                  Layout.preferredHeight: 36
-                  color: "#12262f"
-                  border.width: 1
-                  border.color: "#52e8ff"
-                  Text { anchors.centerIn: parent; text: "ALLOW / OPEN"; color: "#52e8ff"; font.family: "monospace"; font.pixelSize: root.fontSmall; font.bold: true }
-                  MouseArea { anchors.fill: parent; cursorShape: Qt.PointingHandCursor; onClicked: root.allowHelp() }
-                }
-              }
-            }
-          }
-        }
-
-        Rectangle {
-          visible: root.fullReportView && root.selectedReport.length > 0
-          anchors.fill: parent
-          z: 15
-          color: "#080b12"
-          border.width: 1
-          border.color: "#52e8ff"
-
           ColumnLayout {
             anchors.fill: parent
-            anchors.margins: 22
-            spacing: 12
-
-            RowLayout {
-              Layout.fillWidth: true
-              Text {
-                text: root.reportIcon(root.selectedReport) + "  FULL REPORT / " + root.selectedReport.split("/").pop()
-                color: "#52e8ff"
-                font.family: "monospace"
-                font.pixelSize: root.fontTitle
-                font.bold: true
-                elide: Text.ElideMiddle
-                Layout.fillWidth: true
-              }
-              Rectangle {
-                Layout.preferredWidth: 112
-                Layout.preferredHeight: 34
-                color: "#121c2b"
-                border.width: 1
-                border.color: "#ff4f9a"
-                Text { anchors.centerIn: parent; text: "BACK"; color: "#ff4f9a"; font.family: "monospace"; font.pixelSize: root.fontSmall; font.bold: true }
-                MouseArea { anchors.fill: parent; cursorShape: Qt.PointingHandCursor; onClicked: root.fullReportView = false }
-              }
+            anchors.margins: 20
+            spacing: 10
+            Text {
+              text: "CONFIRM REPAIR ACTION"
+              color: "#ffb454"
+              font.family: "monospace"
+              font.pixelSize: root.fontTitle
+              font.bold: true
             }
-
-            Rectangle { Layout.fillWidth: true; height: 1; color: "#263445" }
-
-            Flickable {
-              Layout.fillWidth: true
-              Layout.fillHeight: true
-              clip: true
-              contentWidth: width
-              contentHeight: fullReportBody.paintedHeight
-              Text {
-                id: fullReportBody
-                width: parent.width
-                text: root.markdownToRichText(root.reportText)
-                color: "#c8d2e8"
-                font.family: "monospace"
-                font.pixelSize: root.fontBody
-                wrapMode: Text.Wrap
-                textFormat: Text.RichText
-                onLinkActivated: function(link) { root.activateReportLink(link) }
-              }
-            }
-          }
-        }
-
-        Rectangle {
-          visible: root.fixCenterOpen
-          anchors.fill: parent
-          z: 25
-          color: "#080b12"
-          border.width: 1
-          border.color: "#ffb454"
-
-          MouseArea { anchors.fill: parent; onClicked: mouse.accepted = true }
-
-          ColumnLayout {
-            anchors.fill: parent
-            anchors.margins: 22
-            spacing: 12
-
-            RowLayout {
-              Layout.fillWidth: true
-              Text {
-                text: "🧰  FIX CENTER / REPAIR CONTROL"
-                color: "#ffb454"
-                font.family: "monospace"
-                font.pixelSize: root.fontTitle
-                font.bold: true
-                Layout.fillWidth: true
-              }
-              Text {
-                text: SnapshotReader.suggestions.length + " ACTIONS"
-                color: "#52e8ff"
-                font.family: "monospace"
-                font.pixelSize: root.fontSmall
-                font.bold: true
-              }
-              Rectangle {
-                Layout.preferredWidth: 104
-                Layout.preferredHeight: 34
-                color: "#121c2b"
-                border.width: 1
-                border.color: "#ff4f9a"
-                Text { anchors.centerIn: parent; text: "CLOSE"; color: "#ff4f9a"; font.family: "monospace"; font.pixelSize: root.fontSmall; font.bold: true }
-                MouseArea { anchors.fill: parent; cursorShape: Qt.PointingHandCursor; onClicked: root.closeFixCenter() }
-              }
-            }
-
             Text {
               Layout.fillWidth: true
-              text: "Select a finding to review the command, man page, documentation, and repair mode. Manual repair only opens guidance; Auto Repair requires confirmation and one explicit authorization."
+              text: "This will run an allowlisted package repair with elevated permissions.\n\nFinding: " + String(root.selectedFix().title || root.pendingFixId) + "\nCommand: " + String(root.selectedFix().command || "not available") + "\n\nAllow only if you reviewed the explanation and proposed command. A fix report will be written after completion."
               color: "#c8d2e8"
               font.family: "monospace"
               font.pixelSize: root.fontBody
               wrapMode: Text.Wrap
             }
-
-            Rectangle { Layout.fillWidth: true; height: 1; color: "#263445" }
-
             RowLayout {
               Layout.fillWidth: true
-              Layout.fillHeight: true
-              spacing: 12
-
+              Item { Layout.fillWidth: true }
               Rectangle {
-                Layout.preferredWidth: 350
-                Layout.fillHeight: true
-                color: "#0d1320"
+                Layout.preferredWidth: 110
+                Layout.preferredHeight: 36
+                color: "#1d2634"
                 border.width: 1
-                border.color: "#263445"
+                border.color: "#8290a4"
+                Text { anchors.centerIn: parent; text: "CANCEL"; color: "#c8d2e8"; font.family: "monospace"; font.pixelSize: root.fontSmall }
+                MouseArea { anchors.fill: parent; cursorShape: Qt.PointingHandCursor; onClicked: root.confirmingFix = false }
+              }
+              Rectangle {
+                Layout.preferredWidth: 150
+                Layout.preferredHeight: 36
+                color: "#2a2417"
+                border.width: 1
+                border.color: "#ffb454"
+                Text { anchors.centerIn: parent; text: "AUTHORIZE / APPLY"; color: "#ffb454"; font.family: "monospace"; font.pixelSize: root.fontSmall; font.bold: true }
+                MouseArea { anchors.fill: parent; cursorShape: Qt.PointingHandCursor; onClicked: root.applyFix() }
+              }
+            }
+          }
+        }
+      }
 
-                ColumnLayout {
-                  anchors.fill: parent
-                  anchors.margins: 10
-                  spacing: 7
-                  Text { text: "REPAIR QUEUE"; color: "#52e8ff"; font.family: "monospace"; font.pixelSize: root.fontSection; font.bold: true }
-                  ListView {
-                    Layout.fillWidth: true
-                    Layout.fillHeight: true
-                    clip: true
-                    model: SnapshotReader.suggestions
-                    spacing: 6
-                    delegate: Rectangle {
-                      width: ListView.view.width
-                      height: 64
-                      color: root.selectedFixIndex === index ? "#1c2b43" : "#111824"
-                      border.width: 1
-                      border.color: SnapshotReader.severityColor(String(modelData.severity || "attention"))
-                      RowLayout {
-                        anchors.fill: parent
-                        anchors.margins: 9
-                        spacing: 8
-                        Text { text: String(modelData.severity || "attention").toUpperCase(); color: SnapshotReader.severityColor(String(modelData.severity || "attention")); font.family: "monospace"; font.pixelSize: root.fontMicro; font.bold: true }
-                        ColumnLayout {
-                          Layout.fillWidth: true
-                          spacing: 2
-                          Text { text: String(modelData.title || ""); color: "#f2f5f7"; font.family: "monospace"; font.pixelSize: root.fontSmall; elide: Text.ElideRight; Layout.fillWidth: true }
-                          Text { text: modelData.auto_fix ? "AUTO REPAIR AVAILABLE" : "MANUAL REVIEW REQUIRED"; color: modelData.auto_fix ? "#c8e967" : "#8290a4"; font.family: "monospace"; font.pixelSize: root.fontMicro }
-                        }
+      Rectangle {
+        visible: root.confirmingHelp
+        anchors.fill: parent
+        z: 45
+        color: "#d9080b12"
+        border.width: 1
+        border.color: "#52e8ff"
+
+        MouseArea { anchors.fill: parent }
+
+        Rectangle {
+          width: Math.min(600, parent.width - 48)
+          height: 230
+          anchors.centerIn: parent
+          color: "#111824"
+          border.width: 1
+          border.color: "#52e8ff"
+
+          ColumnLayout {
+            anchors.fill: parent
+            anchors.margins: 20
+            spacing: 10
+            Text {
+              text: "ALLOW EXTERNAL REFERENCE"
+              color: "#52e8ff"
+              font.family: "monospace"
+              font.pixelSize: root.fontTitle
+              font.bold: true
+            }
+            Text {
+              Layout.fillWidth: true
+              text: "Open the " + root.pendingHelpLabel + " in your browser?\n\nThis is read-only guidance. It will not run a repair or grant permissions.\n\n" + root.pendingHelpUrl
+              color: "#c8d2e8"
+              font.family: "monospace"
+              font.pixelSize: root.fontBody
+              wrapMode: Text.Wrap
+            }
+            RowLayout {
+              Layout.fillWidth: true
+              Item { Layout.fillWidth: true }
+              Rectangle {
+                Layout.preferredWidth: 110
+                Layout.preferredHeight: 36
+                color: "#1d2634"
+                border.width: 1
+                border.color: "#8290a4"
+                Text { anchors.centerIn: parent; text: "DENY / CLOSE"; color: "#c8d2e8"; font.family: "monospace"; font.pixelSize: root.fontSmall }
+                MouseArea { anchors.fill: parent; cursorShape: Qt.PointingHandCursor; onClicked: root.confirmingHelp = false }
+              }
+              Rectangle {
+                Layout.preferredWidth: 145
+                Layout.preferredHeight: 36
+                color: "#12262f"
+                border.width: 1
+                border.color: "#52e8ff"
+                Text { anchors.centerIn: parent; text: "ALLOW / OPEN"; color: "#52e8ff"; font.family: "monospace"; font.pixelSize: root.fontSmall; font.bold: true }
+                MouseArea { anchors.fill: parent; cursorShape: Qt.PointingHandCursor; onClicked: root.allowHelp() }
+              }
+            }
+          }
+        }
+      }
+
+      Rectangle {
+        visible: root.fullReportView && root.selectedReport.length > 0
+        anchors.fill: parent
+        z: 15
+        color: "#080b12"
+        border.width: 1
+        border.color: "#52e8ff"
+
+        ColumnLayout {
+          anchors.fill: parent
+          anchors.margins: 22
+          spacing: 12
+
+          RowLayout {
+            Layout.fillWidth: true
+            Text {
+              text: root.reportIcon(root.selectedReport) + "  FULL REPORT / " + root.selectedReport.split("/").pop()
+              color: "#52e8ff"
+              font.family: "monospace"
+              font.pixelSize: root.fontTitle
+              font.bold: true
+              elide: Text.ElideMiddle
+              Layout.fillWidth: true
+            }
+            Rectangle {
+              Layout.preferredWidth: 112
+              Layout.preferredHeight: 34
+              color: "#121c2b"
+              border.width: 1
+              border.color: "#ff4f9a"
+              Text { anchors.centerIn: parent; text: "BACK"; color: "#ff4f9a"; font.family: "monospace"; font.pixelSize: root.fontSmall; font.bold: true }
+              MouseArea { anchors.fill: parent; cursorShape: Qt.PointingHandCursor; onClicked: root.fullReportView = false }
+            }
+          }
+
+          Rectangle { Layout.fillWidth: true; implicitHeight: 1; color: "#263445" }
+
+          ListView {
+            Layout.fillWidth: true
+            Layout.fillHeight: true
+            clip: true
+            cacheBuffer: 400
+            model: root.fullReportChunks
+            delegate: reportChunkDelegate
+          }
+        }
+      }
+
+      Rectangle {
+        visible: root.fixCenterOpen
+        anchors.fill: parent
+        z: 25
+        color: "#080b12"
+        border.width: 1
+        border.color: "#ffb454"
+
+        MouseArea { anchors.fill: parent; onClicked: function(mouse) { mouse.accepted = true } }
+
+        ColumnLayout {
+          anchors.fill: parent
+          anchors.margins: 22
+          spacing: 12
+
+          RowLayout {
+            Layout.fillWidth: true
+            Text {
+              text: "🧰  FIX CENTER / REPAIR CONTROL"
+              color: "#ffb454"
+              font.family: "monospace"
+              font.pixelSize: root.fontTitle
+              font.bold: true
+              Layout.fillWidth: true
+            }
+            Text {
+              text: SnapshotReader.suggestions.length + " ACTIONS"
+              color: "#52e8ff"
+              font.family: "monospace"
+              font.pixelSize: root.fontSmall
+              font.bold: true
+            }
+            Rectangle {
+              Layout.preferredWidth: 104
+              Layout.preferredHeight: 34
+              color: "#121c2b"
+              border.width: 1
+              border.color: "#ff4f9a"
+              Text { anchors.centerIn: parent; text: "CLOSE"; color: "#ff4f9a"; font.family: "monospace"; font.pixelSize: root.fontSmall; font.bold: true }
+              MouseArea { anchors.fill: parent; cursorShape: Qt.PointingHandCursor; onClicked: root.closeFixCenter() }
+            }
+          }
+
+          Text {
+            Layout.fillWidth: true
+            text: "Select a finding to review the command, man page, documentation, and repair mode. Manual repair only opens guidance; Auto Repair requires confirmation and one explicit authorization."
+            color: "#c8d2e8"
+            font.family: "monospace"
+            font.pixelSize: root.fontBody
+            wrapMode: Text.Wrap
+          }
+
+          Rectangle { Layout.fillWidth: true; implicitHeight: 1; color: "#263445" }
+
+          RowLayout {
+            Layout.fillWidth: true
+            Layout.fillHeight: true
+            spacing: 12
+
+            Rectangle {
+              Layout.preferredWidth: 350
+              Layout.fillHeight: true
+              color: "#0d1320"
+              border.width: 1
+              border.color: "#263445"
+
+              ColumnLayout {
+                anchors.fill: parent
+                anchors.margins: 10
+                spacing: 7
+                Text { text: "REPAIR QUEUE"; color: "#52e8ff"; font.family: "monospace"; font.pixelSize: root.fontSection; font.bold: true }
+                ListView {
+                  Layout.fillWidth: true
+                  Layout.fillHeight: true
+                  clip: true
+                  model: SnapshotReader.suggestions
+                  spacing: 6
+                  delegate: Rectangle {
+                    id: fixRow
+                    required property var modelData
+                    required property int index
+                    width: ListView.view.width
+                    height: 64
+                    color: root.selectedFixIndex === fixRow.index ? "#1c2b43" : "#111824"
+                    border.width: 1
+                    border.color: SnapshotReader.severityColor(String(fixRow.modelData.severity || "attention"))
+                    RowLayout {
+                      anchors.fill: parent
+                      anchors.margins: 9
+                      spacing: 8
+                      Text { text: String(fixRow.modelData.severity || "attention").toUpperCase(); color: SnapshotReader.severityColor(String(fixRow.modelData.severity || "attention")); font.family: "monospace"; font.pixelSize: root.fontMicro; font.bold: true }
+                      ColumnLayout {
+                        Layout.fillWidth: true
+                        spacing: 2
+                        Text { text: String(fixRow.modelData.title || ""); color: "#f2f5f7"; font.family: "monospace"; font.pixelSize: root.fontSmall; elide: Text.ElideRight; Layout.fillWidth: true }
+                        Text { text: fixRow.modelData.auto_fix ? "AUTO REPAIR AVAILABLE" : "MANUAL REVIEW REQUIRED"; color: fixRow.modelData.auto_fix ? "#c8e967" : "#8290a4"; font.family: "monospace"; font.pixelSize: root.fontMicro }
                       }
-                      MouseArea { anchors.fill: parent; cursorShape: Qt.PointingHandCursor; onClicked: root.selectedFixIndex = index }
                     }
-                    Text {
-                      anchors.centerIn: parent
-                      visible: SnapshotReader.suggestions.length === 0
-                      text: "NO FINDINGS / SYSTEM CLEAR"
-                      color: "#c8e967"
-                      font.family: "monospace"
-                      font.pixelSize: root.fontSmall
-                    }
+                    MouseArea { anchors.fill: parent; cursorShape: Qt.PointingHandCursor; onClicked: root.selectedFixIndex = fixRow.index }
+                  }
+                  Text {
+                    anchors.centerIn: parent
+                    visible: SnapshotReader.suggestions.length === 0
+                    text: "NO FINDINGS / SYSTEM CLEAR"
+                    color: "#c8e967"
+                    font.family: "monospace"
+                    font.pixelSize: root.fontSmall
                   }
                 }
               }
+            }
 
-              Rectangle {
-                Layout.fillWidth: true
-                Layout.fillHeight: true
-                color: "#0d1320"
-                border.width: 1
-                border.color: SnapshotReader.suggestions.length ? SnapshotReader.severityColor(String(root.selectedFix().severity || "attention")) : "#263445"
+            Rectangle {
+              Layout.fillWidth: true
+              Layout.fillHeight: true
+              color: "#0d1320"
+              border.width: 1
+              border.color: SnapshotReader.suggestions.length ? SnapshotReader.severityColor(String(root.selectedFix().severity || "attention")) : "#263445"
 
-                Flickable {
-                  id: fixDetailScroll
-                  anchors.fill: parent
-                  anchors.margins: 16
-                  clip: true
-                  contentWidth: width
-                  contentHeight: fixDetailColumn.implicitHeight
+              Flickable {
+                id: fixDetailScroll
+                anchors.fill: parent
+                anchors.margins: 16
+                clip: true
+                contentWidth: width
+                contentHeight: fixDetailColumn.implicitHeight
 
-                  ColumnLayout {
-                    id: fixDetailColumn
-                    width: fixDetailScroll.width
-                    spacing: 10
+                ColumnLayout {
+                  id: fixDetailColumn
+                  width: fixDetailScroll.width
+                  spacing: 10
 
-                  Text {
-                    Layout.fillWidth: true
-                    text: SnapshotReader.suggestions.length ? String(root.selectedFix().title || "SELECT A FINDING") : "NO REPAIR ACTIONS"
-                    color: SnapshotReader.suggestions.length ? SnapshotReader.severityColor(String(root.selectedFix().severity || "attention")) : "#c8e967"
-                    font.family: "monospace"
-                    font.pixelSize: root.fontTitle
-                    font.bold: true
-                    wrapMode: Text.Wrap
-                  }
-                  Text {
-                    Layout.fillWidth: true
-                    text: SnapshotReader.suggestions.length ? String(root.selectedFix().detail || "") : "The latest audit did not produce repair suggestions."
-                    color: "#c8d2e8"
-                    font.family: "monospace"
-                    font.pixelSize: root.fontBody
-                    wrapMode: Text.Wrap
-                  }
-                  Text {
-                    visible: SnapshotReader.suggestions.length > 0
-                    Layout.fillWidth: true
-                    text: "EXPLANATION / IMPACT"
-                    color: "#52e8ff"
-                    font.family: "monospace"
-                    font.pixelSize: root.fontSection
-                    font.bold: true
-                  }
-                  Text {
-                    visible: SnapshotReader.suggestions.length > 0
-                    Layout.fillWidth: true
-                    text: String(root.selectedFix().explanation || "No additional explanation was recorded for this finding.")
-                    color: "#c8d2e8"
-                    font.family: "monospace"
-                    font.pixelSize: root.fontSmall
-                    wrapMode: Text.Wrap
-                  }
-                  Text {
-                    visible: SnapshotReader.suggestions.length > 0
-                    Layout.fillWidth: true
-                    text: "MANUAL CHECKLIST / REVIEW EACH STEP"
-                    color: "#ffb454"
-                    font.family: "monospace"
-                    font.pixelSize: root.fontSection
-                    font.bold: true
-                  }
-                  ColumnLayout {
-                    visible: SnapshotReader.suggestions.length > 0
-                    Layout.fillWidth: true
-                    spacing: 3
-                    Repeater {
-                      model: SnapshotReader.suggestions.length > 0 ? (root.selectedFix().manual_steps || []) : []
-                      delegate: Text {
-                        Layout.fillWidth: true
-                        text: "◆ " + String(modelData || "")
-                        color: "#c8d2e8"
-                        font.family: "monospace"
-                        font.pixelSize: root.fontSmall
-                        wrapMode: Text.Wrap
-                      }
-                    }
-                  }
-                  Text { visible: SnapshotReader.suggestions.length > 0; text: "PROPOSED COMMAND / INSPECTION"; color: "#52e8ff"; font.family: "monospace"; font.pixelSize: root.fontSection; font.bold: true }
-                  Rectangle {
-                    visible: SnapshotReader.suggestions.length > 0
-                    Layout.fillWidth: true
-                    Layout.preferredHeight: 52
-                    color: "#080b12"
-                    border.width: 1
-                    border.color: "#263445"
-                    Text { anchors.fill: parent; anchors.margins: 10; text: String(root.selectedFix().command || "NO AUTOMATIC COMMAND"); color: "#ffb454"; font.family: "monospace"; font.pixelSize: root.fontBody; wrapMode: Text.Wrap; verticalAlignment: Text.AlignVCenter }
-                  }
-                  Text {
-                    visible: SnapshotReader.suggestions.length > 0
-                    Layout.fillWidth: true
-                    text: (root.selectedFix().auto_fix ? "AUTO REPAIR: AVAILABLE AFTER AUTHORIZATION / " : "AUTO REPAIR: NOT AVAILABLE / ") + String(root.selectedFix().auto_fix_reason || "Manual review is required.")
-                    color: root.selectedFix().auto_fix ? "#c8e967" : "#ff8f70"
-                    font.family: "monospace"
-                    font.pixelSize: root.fontSmall
-                    wrapMode: Text.Wrap
-                  }
-                  RowLayout {
-                    Layout.fillWidth: true
-                    spacing: 8
-                    Rectangle {
-                      Layout.preferredWidth: 112
-                      Layout.preferredHeight: 32
-                      color: "#121c2b"
-                      border.width: 1
-                      border.color: "#52e8ff"
-                      Text { anchors.centerIn: parent; text: "OPEN MAN PAGE"; color: "#52e8ff"; font.family: "monospace"; font.pixelSize: root.fontMicro; font.bold: true }
-                      MouseArea { anchors.fill: parent; cursorShape: Qt.PointingHandCursor; onClicked: root.openFixHelp(root.selectedFix().man_url, "MAN PAGE") }
-                    }
-                    Rectangle {
-                      Layout.preferredWidth: 124
-                      Layout.preferredHeight: 32
-                      color: "#121c2b"
-                      border.width: 1
-                      border.color: "#52e8ff"
-                      Text { anchors.centerIn: parent; text: "OPEN DOCUMENTATION"; color: "#52e8ff"; font.family: "monospace"; font.pixelSize: root.fontMicro; font.bold: true }
-                      MouseArea { anchors.fill: parent; cursorShape: Qt.PointingHandCursor; onClicked: root.openFixHelp(root.selectedFix().docs_url, "DOCUMENTATION") }
-                    }
-                    Rectangle {
-                      Layout.preferredWidth: 152
-                      Layout.preferredHeight: 32
-                      color: "#121c2b"
-                      border.width: 1
-                      border.color: "#a56bff"
-                      Text { anchors.centerIn: parent; text: "VIEW MD REPORT"; color: "#a56bff"; font.family: "monospace"; font.pixelSize: root.fontMicro; font.bold: true }
-                      MouseArea { anchors.fill: parent; cursorShape: Qt.PointingHandCursor; onClicked: root.openSuggestionsReport() }
-                    }
-                  }
-                  Text { visible: root.fixMessage.length > 0; Layout.fillWidth: true; text: root.fixMessage; color: root.fixMessage.indexOf("FAILED") >= 0 ? "#ff667d" : "#c8e967"; font.family: "monospace"; font.pixelSize: root.fontMicro; elide: Text.ElideMiddle }
-                  RowLayout {
-                    Layout.fillWidth: true
-                    spacing: 8
-                    Rectangle {
+                Text {
+                  Layout.fillWidth: true
+                  text: SnapshotReader.suggestions.length ? String(root.selectedFix().title || "SELECT A FINDING") : "NO REPAIR ACTIONS"
+                  color: SnapshotReader.suggestions.length ? SnapshotReader.severityColor(String(root.selectedFix().severity || "attention")) : "#c8e967"
+                  font.family: "monospace"
+                  font.pixelSize: root.fontTitle
+                  font.bold: true
+                  wrapMode: Text.Wrap
+                }
+                Text {
+                  Layout.fillWidth: true
+                  text: SnapshotReader.suggestions.length ? String(root.selectedFix().detail || "") : "The latest audit did not produce repair suggestions."
+                  color: "#c8d2e8"
+                  font.family: "monospace"
+                  font.pixelSize: root.fontBody
+                  wrapMode: Text.Wrap
+                }
+                Text {
+                  visible: SnapshotReader.suggestions.length > 0
+                  Layout.fillWidth: true
+                  text: "EXPLANATION / IMPACT"
+                  color: "#52e8ff"
+                  font.family: "monospace"
+                  font.pixelSize: root.fontSection
+                  font.bold: true
+                }
+                Text {
+                  visible: SnapshotReader.suggestions.length > 0
+                  Layout.fillWidth: true
+                  text: String(root.selectedFix().explanation || "No additional explanation was recorded for this finding.")
+                  color: "#c8d2e8"
+                  font.family: "monospace"
+                  font.pixelSize: root.fontSmall
+                  wrapMode: Text.Wrap
+                }
+                Text {
+                  visible: SnapshotReader.suggestions.length > 0
+                  Layout.fillWidth: true
+                  text: "MANUAL CHECKLIST / REVIEW EACH STEP"
+                  color: "#ffb454"
+                  font.family: "monospace"
+                  font.pixelSize: root.fontSection
+                  font.bold: true
+                }
+                ColumnLayout {
+                  visible: SnapshotReader.suggestions.length > 0
+                  Layout.fillWidth: true
+                  spacing: 3
+                  Repeater {
+                    model: SnapshotReader.suggestions.length > 0 ? (root.selectedFix().manual_steps || []) : []
+                    delegate: Text {
+                      id: stepLine
+                      required property var modelData
                       Layout.fillWidth: true
-                      Layout.preferredHeight: 42
-                      color: "#182438"
-                      border.width: 1
-                      border.color: "#8290a4"
-                      Text { anchors.centerIn: parent; text: "MANUAL REPAIR / OPEN GUIDE"; color: "#c8d2e8"; font.family: "monospace"; font.pixelSize: root.fontSmall; font.bold: true }
-                      MouseArea { anchors.fill: parent; cursorShape: Qt.PointingHandCursor; onClicked: root.openFixHelp(root.selectedFix().docs_url, "MANUAL REPAIR GUIDE") }
-                    }
-                    Rectangle {
-                      visible: SnapshotReader.suggestions.length > 0 && Boolean(root.selectedFix().auto_fix)
-                      Layout.fillWidth: true
-                      Layout.preferredHeight: 42
-                      color: "#2a2417"
-                      border.width: 1
-                      border.color: "#ffb454"
-                      Text { anchors.centerIn: parent; text: "AUTO REPAIR / CONFIRM"; color: "#ffb454"; font.family: "monospace"; font.pixelSize: root.fontSmall; font.bold: true }
-                      MouseArea { anchors.fill: parent; cursorShape: Qt.PointingHandCursor; onClicked: root.requestFix(String(root.selectedFix().id || "")) }
+                      text: "◆ " + String(stepLine.modelData || "")
+                      color: "#c8d2e8"
+                      font.family: "monospace"
+                      font.pixelSize: root.fontSmall
+                      wrapMode: Text.Wrap
                     }
                   }
+                }
+                Text { visible: SnapshotReader.suggestions.length > 0; text: "PROPOSED COMMAND / INSPECTION"; color: "#52e8ff"; font.family: "monospace"; font.pixelSize: root.fontSection; font.bold: true }
+                Rectangle {
+                  visible: SnapshotReader.suggestions.length > 0
+                  Layout.fillWidth: true
+                  Layout.preferredHeight: 52
+                  color: "#080b12"
+                  border.width: 1
+                  border.color: "#263445"
+                  Text { anchors.fill: parent; anchors.margins: 10; text: String(root.selectedFix().command || "NO AUTOMATIC COMMAND"); color: "#ffb454"; font.family: "monospace"; font.pixelSize: root.fontBody; wrapMode: Text.Wrap; verticalAlignment: Text.AlignVCenter }
+                }
+                Text {
+                  visible: SnapshotReader.suggestions.length > 0
+                  Layout.fillWidth: true
+                  text: (root.selectedFix().auto_fix ? "AUTO REPAIR: AVAILABLE AFTER AUTHORIZATION / " : "AUTO REPAIR: NOT AVAILABLE / ") + String(root.selectedFix().auto_fix_reason || "Manual review is required.")
+                  color: root.selectedFix().auto_fix ? "#c8e967" : "#ff8f70"
+                  font.family: "monospace"
+                  font.pixelSize: root.fontSmall
+                  wrapMode: Text.Wrap
+                }
+                RowLayout {
+                  Layout.fillWidth: true
+                  spacing: 8
                   Rectangle {
-                    visible: root.fixReportPath().length > 0
-                    Layout.preferredWidth: 180
-                    Layout.preferredHeight: 30
+                    Layout.preferredWidth: 112
+                    Layout.preferredHeight: 32
                     color: "#121c2b"
                     border.width: 1
-                    border.color: "#c8e967"
-                    Text { anchors.centerIn: parent; text: "VIEW FIX RESULT"; color: "#c8e967"; font.family: "monospace"; font.pixelSize: root.fontMicro; font.bold: true }
-                    MouseArea { anchors.fill: parent; cursorShape: Qt.PointingHandCursor; onClicked: root.openFixReport() }
+                    border.color: "#52e8ff"
+                    Text { anchors.centerIn: parent; text: "OPEN MAN PAGE"; color: "#52e8ff"; font.family: "monospace"; font.pixelSize: root.fontMicro; font.bold: true }
+                    MouseArea { anchors.fill: parent; cursorShape: Qt.PointingHandCursor; onClicked: root.openFixHelp(root.selectedFix().man_url, "MAN PAGE") }
                   }
+                  Rectangle {
+                    Layout.preferredWidth: 124
+                    Layout.preferredHeight: 32
+                    color: "#121c2b"
+                    border.width: 1
+                    border.color: "#52e8ff"
+                    Text { anchors.centerIn: parent; text: "OPEN DOCUMENTATION"; color: "#52e8ff"; font.family: "monospace"; font.pixelSize: root.fontMicro; font.bold: true }
+                    MouseArea { anchors.fill: parent; cursorShape: Qt.PointingHandCursor; onClicked: root.openFixHelp(root.selectedFix().docs_url, "DOCUMENTATION") }
                   }
+                  Rectangle {
+                    Layout.preferredWidth: 152
+                    Layout.preferredHeight: 32
+                    color: "#121c2b"
+                    border.width: 1
+                    border.color: "#a56bff"
+                    Text { anchors.centerIn: parent; text: "VIEW MD REPORT"; color: "#a56bff"; font.family: "monospace"; font.pixelSize: root.fontMicro; font.bold: true }
+                    MouseArea { anchors.fill: parent; cursorShape: Qt.PointingHandCursor; onClicked: root.openSuggestionsReport() }
+                  }
+                }
+                Text { visible: root.fixMessage.length > 0; Layout.fillWidth: true; text: root.fixMessage; color: root.fixMessage.indexOf("FAILED") >= 0 ? "#ff667d" : "#c8e967"; font.family: "monospace"; font.pixelSize: root.fontMicro; elide: Text.ElideMiddle }
+                RowLayout {
+                  Layout.fillWidth: true
+                  spacing: 8
+                  Rectangle {
+                    Layout.fillWidth: true
+                    Layout.preferredHeight: 42
+                    color: "#182438"
+                    border.width: 1
+                    border.color: "#8290a4"
+                    Text { anchors.centerIn: parent; text: "MANUAL REPAIR / OPEN GUIDE"; color: "#c8d2e8"; font.family: "monospace"; font.pixelSize: root.fontSmall; font.bold: true }
+                    MouseArea { anchors.fill: parent; cursorShape: Qt.PointingHandCursor; onClicked: root.openFixHelp(root.selectedFix().docs_url, "MANUAL REPAIR GUIDE") }
+                  }
+                  Rectangle {
+                    visible: SnapshotReader.suggestions.length > 0 && Boolean(root.selectedFix().auto_fix)
+                    Layout.fillWidth: true
+                    Layout.preferredHeight: 42
+                    color: "#2a2417"
+                    border.width: 1
+                    border.color: "#ffb454"
+                    Text { anchors.centerIn: parent; text: "AUTO REPAIR / CONFIRM"; color: "#ffb454"; font.family: "monospace"; font.pixelSize: root.fontSmall; font.bold: true }
+                    MouseArea { anchors.fill: parent; cursorShape: Qt.PointingHandCursor; onClicked: root.requestFix(String(root.selectedFix().id || "")) }
+                  }
+                }
+                Rectangle {
+                  visible: root.fixReportPath().length > 0
+                  Layout.preferredWidth: 180
+                  Layout.preferredHeight: 30
+                  color: "#121c2b"
+                  border.width: 1
+                  border.color: "#c8e967"
+                  Text { anchors.centerIn: parent; text: "VIEW FIX RESULT"; color: "#c8e967"; font.family: "monospace"; font.pixelSize: root.fontMicro; font.bold: true }
+                  MouseArea { anchors.fill: parent; cursorShape: Qt.PointingHandCursor; onClicked: root.openFixReport() }
+                }
                 }
               }
             }

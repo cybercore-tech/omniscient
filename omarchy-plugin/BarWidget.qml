@@ -23,11 +23,13 @@ BarWidget {
       : SnapshotReader.state === "running"
         ? Color.accent
         : Color.foreground
-    fixedWidth: root.bar && root.bar.vertical ? -1 : Style.space(26)
-    fixedHeight: root.bar && root.bar.vertical ? Style.space(26) : -1
+    fixedWidth: root.vertical ? -1 : Style.space(26)
+    fixedHeight: root.vertical ? Style.space(26) : -1
     onPressed: function(b) {
       if (!root.bar) return
-      root.bar.run("omarchy-shell shell toggle io.github.cybercore-tech.omniscient")
+      // The host declares `bar` as a plain QtObject, so the linter cannot see
+      // Bar.run(); stock Omarchy widgets call it the same way.
+      root.bar.run("omarchy-shell shell toggle io.github.cybercore-tech.omniscient") // qmllint disable missing-property
     }
 
     Item {

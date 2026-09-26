@@ -27,8 +27,12 @@ and renders the resulting report index and Markdown content in place.
   confirmation and produce a `fixes/` report after completion.
 - Reads XDG_RUNTIME_DIR/omniscient/snapshot.json, falling back to
   ~/.local/state/omniscient/snapshot.json.
-- Refreshes once per second and degrades to a waiting state when the snapshot
-  is absent or invalid. Privileged modules use the configured graphical
+- Polls the snapshot every two seconds but updates the panel only when its
+  contents change, and degrades to a waiting state when the snapshot is
+  absent, invalid, or larger than 1 MiB.
+- Reads at most 512 KiB of a report and renders it through virtualized list
+  views, so opening a report costs the same whatever its size; a longer report
+  says where the complete file is. Privileged modules use the configured graphical
   `pkexec` backend when launched from the HUD.
 
 ## Security model
