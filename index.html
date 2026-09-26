@@ -151,7 +151,7 @@ footer { border-top:1px solid var(--line); padding:30px 0 44px; color:var(--mute
       <h1>See the whole system.<span class="accent">Keep the signal.</span></h1>
       <p class="hero-copy"><strong>Omniscient</strong> turns Linux inspection into one readable, repeatable surface — hardware, storage, services, network state, capabilities, and the report that connects them.</p>
       <div class="actions"><a class="btn primary" href="#install">Deploy the console →</a><a class="btn" href="https://github.com/cybercore-tech/omniscient">View source</a></div>
-      <div class="hero-meta"><div><b>09</b>audit modules</div><div><b>100</b>health baseline</div><div><b>MIT</b>open source</div></div>
+      <div class="hero-meta"><div><b>17</b>audit modules</div><div><b>10</b>diagnostic domains</div><div><b>MIT</b>open source</div></div>
     </div>
     <div class="hero-art" aria-label="Omniscient radar logo">
       <svg class="radar" viewBox="0 0 320 320" role="img">
@@ -171,13 +171,15 @@ footer { border-top:1px solid var(--line); padding:30px 0 44px; color:var(--mute
 
 <section id="surface">
   <div class="wrap">
-    <div class="section-head"><div><div class="kicker">The audit surface</div><h2>Five passes.<br>One system picture.</h2></div><p>The Cybercore schema stays the connective tissue: shared color keys, shared tokens, shared operator language. Omniscient makes the signal actionable.</p></div>
+    <div class="section-head"><div><div class="kicker">The audit surface</div><h2>Ten domains.<br>One system picture.</h2></div><p>The Cybercore schema stays the connective tissue: shared color keys, shared tokens, shared operator language. Omniscient makes the signal actionable while keeping the first pass read-only.</p></div>
     <div class="schema-grid">
       <article class="schema-card"><div class="schema-num">01 / DISCOVERY</div><h3>Hardware core</h3><p>CPU, USB, PCI, memory, and machine identity.</p><code>hw://inventory</code></article>
       <article class="schema-card"><div class="schema-num">02 / PRESSURE</div><h3>Storage matrix</h3><p>Block devices, SMART health, and Btrfs snapshots.</p><code>io://storage</code></article>
       <article class="schema-card"><div class="schema-num">03 / SIGNAL</div><h3>Network nexus</h3><p>Interfaces, sockets, Bluetooth, and connected devices.</p><code>net://surface</code></article>
       <article class="schema-card"><div class="schema-num">04 / SERVICES</div><h3>Daemon watch</h3><p>Systemd units, kernel logs, and container inventory.</p><code>svc://runtime</code></article>
-      <article class="schema-card"><div class="schema-num">05 / REPORT</div><h3>Health signal</h3><p>A linked Markdown report with nothing silently hidden.</p><code>report://summary</code></article>
+      <article class="schema-card"><div class="schema-num">05 / POSTURE</div><h3>Security surface</h3><p>Listeners, firewall state, accounts, persistence, and package integrity.</p><code>secure://posture</code></article>
+      <article class="schema-card"><div class="schema-num">06 / RESILIENCE</div><h3>Recovery signal</h3><p>Filesystem readiness, hardware reliability, performance, and Omarchy health.</p><code>system://resilience</code></article>
+      <article class="schema-card"><div class="schema-num">07 / REPORT</div><h3>Health signal</h3><p>A linked Markdown report with nothing silently hidden.</p><code>report://summary</code></article>
     </div>
   </div>
 </section>
@@ -208,6 +210,14 @@ footer { border-top:1px solid var(--line); padding:30px 0 44px; color:var(--mute
       <div class="module"><div class="module-icon">KL</div><div><b>Kernel logs</b><small>journal · dmesg</small></div><span class="status">ready</span></div>
       <div class="module"><div class="module-icon">BD</div><div><b>Bluetooth deep</b><small>visible devices</small></div><span class="status">ready</span></div>
       <div class="module"><div class="module-icon">IO</div><div><b>Connected devices</b><small>display · audio</small></div><span class="status">ready</span></div>
+      <div class="module"><div class="module-icon">SP</div><div><b>Security posture</b><small>firewall · kernel · boot</small></div><span class="status">read-only</span></div>
+      <div class="module"><div class="module-icon">AA</div><div><b>Accounts &amp; auth</b><small>users · sessions · SSH</small></div><span class="status">read-only</span></div>
+      <div class="module"><div class="module-icon">PW</div><div><b>Persistence watch</b><small>units · timers · cron</small></div><span class="status">read-only</span></div>
+      <div class="module"><div class="module-icon">PI</div><div><b>Package integrity</b><small>updates · verify · orphans</small></div><span class="status">read-only</span></div>
+      <div class="module"><div class="module-icon">RR</div><div><b>Recovery readiness</b><small>mounts · Btrfs · trim</small></div><span class="status">read-only</span></div>
+      <div class="module"><div class="module-icon">RS</div><div><b>Reliability signals</b><small>errors · dumps · sensors</small></div><span class="status">read-only</span></div>
+      <div class="module"><div class="module-icon">PP</div><div><b>Performance pulse</b><small>load · memory · boot</small></div><span class="status">read-only</span></div>
+      <div class="module"><div class="module-icon">OS</div><div><b>Omarchy surface</b><small>Hyprland · shell · debug</small></div><span class="status">read-only</span></div>
       <div class="module"><div class="module-icon">♥</div><div><b>Health score</b><small>signal · not warranty</small></div><span class="status">live</span></div>
     </div>
   </div>
