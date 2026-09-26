@@ -26,6 +26,7 @@ ShellRoot {
   property int soakRewrites: 0
   property int applyBefore: 0
   property int readsBefore: 0
+  property int pollsBefore: 0
   // Longest tolerated UI-thread stall. Rendering is virtualized, so this
   // holds for any report size; before virtualization a dense 512 KiB report
   // stalled this (slow, i3-8130U) machine for ~2.7 s.
@@ -215,6 +216,43 @@ ShellRoot {
     { name: "audit failure is reported", wait: 5000, until: function() { return harness.panel.runnerMessage === "fake audit failed" }, run: function() {} },
     { name: "audit result", wait: 500, run: function() {
       harness.check(harness.panel.runnerMessage === "fake audit failed", "audit stderr surfaces", harness.panel.runnerMessage)
+      harness.check(harness.panel.sensorPolls === 0, "no sensor polling while on the AUDIT tab", harness.panel.sensorPolls)
+      harness.resetGap()
+      harness.panel.tab = "sensors"
+    } },
+    { name: "sensors tab", wait: 8000, until: function() { return harness.panel.sensors !== null }, run: function() {} },
+    { name: "sensor reading", wait: 2500, run: function() {
+      var r = harness.panel.sensors
+      harness.check(harness.panel.sensorError === "", "sensor reading has no error", harness.panel.sensorError)
+      harness.check(r.cpu.package_celsius === 68.4 && r.cpu.package_source === "k10temp Tctl", "Ryzen package temperature", r.cpu.package_source)
+      harness.check(r.cpu.amd_pstate === "active" && r.cpu.cores.length === 2, "amd-pstate and core clocks", r.cpu.cores.length)
+      harness.check(r.gpus.length === 1 && r.gpus[0].vendor === "AMD" && r.gpus[0].busy_percent === 37, "amdgpu stats", JSON.stringify(r.gpus[0]))
+      harness.check(r.chips.some(function(c) { return c.curves.length === 1 }), "ASUS fan curve read")
+      harness.check(harness.maxGap < harness.stallBudget, "sensor tab stays responsive", Math.round(harness.maxGap) + " ms")
+      harness.panel.tab = "drives"
+    } },
+    { name: "drives tab", wait: 1500, run: function() {
+      // This step runs 2.5 s after the first reading: a second poll is due.
+      harness.check(harness.panel.sensorPolls >= 2, "sensors are polled while the tab is open", harness.panel.sensorPolls)
+      var drives = harness.panel.sensors.drives
+      harness.check(drives.length === 2 && drives[0].celsius === 44.9 && drives[1].celsius === 36, "NVMe and drivetemp temperatures", JSON.stringify(drives.map(function(d) { return d.celsius })))
+      harness.panel.tab = "platform"
+    } },
+    { name: "platform tab", wait: 1500, run: function() {
+      var platform = harness.panel.sensors.platform
+      harness.check(platform.profile === "balanced" && platform.profile_choices.length === 3, "platform profile", platform.profile)
+      harness.check(platform.asus !== null && platform.asus.throttle_policy === "performance", "ASUS thermal policy", JSON.stringify(platform.asus))
+      harness.check(platform.tools.length === 0, "tools are not probed on a fixture root")
+      harness.panel.acceptSensors("{not json")
+      harness.check(harness.panel.sensorError === "INVALID SENSOR READING" && harness.panel.sensors !== null, "a bad reading keeps the last good one")
+      harness.panel.acceptSensors("x".repeat(harness.panel.maxSensorBytes + 1))
+      harness.check(harness.panel.sensorError === "SENSOR READING TOO LARGE", "an oversized reading is refused")
+      harness.panel.tab = "audit"
+      harness.pollsBefore = harness.panel.sensorPolls
+    } },
+    { name: "polling stops", wait: 5000, run: function() {} },
+    { name: "polling stopped", wait: 500, run: function() {
+      harness.check(harness.panel.sensorPolls === harness.pollsBefore, "leaving the sensor tabs stops polling", harness.panel.sensorPolls - harness.pollsBefore)
       harness.panel.openReport(harness.report("omarchy/omarchy.md"))
       harness.mark("soak-start")
       harness.resetGap()

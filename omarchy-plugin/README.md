@@ -35,6 +35,14 @@ and renders the resulting report index and Markdown content in place.
   says where the complete file is. Privileged modules use the configured graphical
   `pkexec` backend when launched from the HUD.
 
+## Tabs
+
+- **AUDIT**: the audit surface above.
+- **SENSORS / DRIVES / PLATFORM**: live, read-only hardware readings from
+  `omniscient --sensors`, refreshed every two seconds only while one of these
+  tabs is open. Control (fan curves, profiles, RGB) stays with the tools the
+  PLATFORM tab lists.
+
 ## Security model
 
 The plugin runs inside Omarchy's unsandboxed shell process. Read the

@@ -56,6 +56,59 @@ def snapshot(root, **overrides):
     return json.dumps(value)
 
 
+SYSROOT = {
+    # A Ryzen + Radeon ASUS laptop with NVMe and a drivetemp SATA disk,
+    # modeled on real sysfs layouts (see src/sensors.rs tests).
+    "proc/cpuinfo": "vendor_id\t: AuthenticAMD\nmodel name\t: AMD Ryzen 9 7940HS w/ Radeon 780M Graphics\n",
+    "proc/stat": "cpu  100 0 100 800 0 0 0 0 0 0\n",
+    "proc/meminfo": "MemTotal: 32768000 kB\nMemAvailable: 16384000 kB\nSwapTotal: 8192000 kB\nSwapFree: 8000000 kB\n",
+    "sys/class/hwmon/hwmon1/name": "k10temp",
+    "sys/class/hwmon/hwmon1/temp1_input": "68375",
+    "sys/class/hwmon/hwmon1/temp1_label": "Tctl",
+    "sys/class/hwmon/hwmon1/temp3_input": "61500",
+    "sys/class/hwmon/hwmon1/temp3_label": "Tccd1",
+    "sys/class/hwmon/hwmon5/name": "asus",
+    "sys/class/hwmon/hwmon5/fan1_input": "2900",
+    "sys/class/hwmon/hwmon5/fan1_label": "cpu_fan",
+    "sys/class/hwmon/hwmon6/name": "asus_custom_fan_curve",
+    "sys/class/hwmon/hwmon6/pwm1_auto_point1_temp": "30",
+    "sys/class/hwmon/hwmon6/pwm1_auto_point1_pwm": "0",
+    "sys/class/hwmon/hwmon6/pwm1_auto_point2_temp": "90",
+    "sys/class/hwmon/hwmon6/pwm1_auto_point2_pwm": "255",
+    "sys/devices/system/cpu/cpu0/cpufreq/scaling_cur_freq": "4012000",
+    "sys/devices/system/cpu/cpu1/cpufreq/scaling_cur_freq": "3000000",
+    "sys/devices/system/cpu/cpu0/cpufreq/scaling_driver": "amd-pstate-epp",
+    "sys/devices/system/cpu/cpufreq/boost": "1",
+    "sys/devices/system/cpu/amd_pstate/status": "active",
+    "sys/class/drm/card0/device/vendor": "0x1002",
+    "sys/class/drm/card0/device/gpu_busy_percent": "37",
+    "sys/class/drm/card0/device/mem_info_vram_used": "1073741824",
+    "sys/class/drm/card0/device/mem_info_vram_total": "4294967296",
+    "sys/class/drm/card0/device/hwmon/hwmon4/name": "amdgpu",
+    "sys/class/drm/card0/device/hwmon/hwmon4/temp1_input": "55000",
+    "sys/class/drm/card0/device/hwmon/hwmon4/temp1_label": "edge",
+    "sys/block/nvme0n1/device/model": "Samsung SSD 990 PRO 2TB",
+    "sys/block/nvme0n1/device/hwmon2/name": "nvme",
+    "sys/block/nvme0n1/device/hwmon2/temp1_input": "44850",
+    "sys/block/nvme0n1/device/hwmon2/temp1_label": "Composite",
+    "sys/block/sda/device/model": "WDC WD40EFRX",
+    "sys/block/sda/device/hwmon/hwmon9/name": "drivetemp",
+    "sys/block/sda/device/hwmon/hwmon9/temp1_input": "36000",
+    "sys/firmware/acpi/platform_profile": "balanced",
+    "sys/firmware/acpi/platform_profile_choices": "quiet balanced performance",
+    "sys/devices/platform/asus-nb-wmi/throttle_thermal_policy": "1",
+    "sys/class/leds/asus::kbd_backlight/brightness": "2",
+    "sys/class/leds/asus::kbd_backlight/max_brightness": "3",
+    "sys/class/dmi/id/sys_vendor": "ASUSTeK COMPUTER INC.",
+    "sys/class/dmi/id/product_name": "ROG Zephyrus G14 GA402XV",
+}
+
+
+def write_sysroot(root):
+    for path, contents in SYSROOT.items():
+        write(os.path.join(root, path), contents + ("" if contents.endswith("\n") else "\n"))
+
+
 def main():
     root = os.path.abspath(sys.argv[1])
     audit = os.path.join(root, "state", "omniscient", "audit")
@@ -101,8 +154,18 @@ def main():
         modules=[{"name": f"m{n}", "slug": f"m{n}", "state": "complete"} for n in range(10_000)],
     ))
 
+    sysroot = os.path.join(root, "sysroot")
+    write_sysroot(sysroot)
+    # The fake binary fails audits (to test error reporting) but forwards
+    # --sensors to the real release binary reading the fake sysfs tree, so
+    # the sensor tabs are tested end to end.
+    real = os.path.abspath(sys.argv[2]) if len(sys.argv) > 2 else "/nonexistent"
     fake = os.path.join(root, "home", ".local", "bin", "omniscient")
-    write(fake, "#!/bin/sh\necho 'fake audit failed' >&2\nexit 3\n")
+    write(fake, "#!/bin/sh\n"
+                "if [ \"$1\" = \"--sensors\" ]; then\n"
+                f"  OMNISCIENT_SYSFS_ROOT='{sysroot}' exec '{real}' --sensors\n"
+                "fi\n"
+                "echo 'fake audit failed' >&2\nexit 3\n")
     os.chmod(fake, os.stat(fake).st_mode | stat.S_IXUSR)
 
 

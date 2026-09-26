@@ -6,6 +6,14 @@ All notable changes to Omniscient are documented here.
 
 ### Added
 
+- HUD tabs **SENSORS / DRIVES / PLATFORM** backed by the new read-only
+  `omniscient --sensors` (`src/sensors.rs`): CPU (Intel coretemp, AMD
+  k10temp/zenpower, amd-pstate, per-core clocks, utilization, RAPL power when
+  elevated), memory, GPUs (amdgpu busy/VRAM/clock/power/fan/temps, Intel
+  clocks), every hwmon chip's temps, fans, PWM duty and fan curves, live
+  temperature of every drive (NVMe; SATA via drivetemp), platform profile,
+  ASUS WMI policy and keyboard light, and detected control tools. Monitoring
+  only; polled every 2 s only while a sensor tab is open.
 - **Deep Signals** module (`src/signals.rs`, report `signals.md` plus
   `signals.json`): update hygiene (reboot needed, programs on replaced shared
   libraries, unmerged `.pacnew`), PSI pressure, crash trends, restart loops and

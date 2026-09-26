@@ -1,3 +1,8 @@
 module io.github.cybercore-tech.omniscient
 singleton SnapshotReader 1.0 SnapshotReader.qml
 HudScrollBar 1.0 HudScrollBar.qml
+singleton SensorStyle 1.0 SensorStyle.qml
+HudMeter 1.0 HudMeter.qml
+SensorsView 1.0 SensorsView.qml
+DrivesView 1.0 DrivesView.qml
+PlatformView 1.0 PlatformView.qml

@@ -48,6 +48,15 @@ bounded independently:
   capped, an unchanged snapshot causes no UI updates, and reports are shown
   through virtualized list views that render only the on-screen part.
 
+## Sensors
+
+`omniscient --sensors` only reads `/sys` and `/proc` (under
+`OMNISCIENT_SYSFS_ROOT`, default `/`) and prints one JSON reading capped at
+512 KiB; the HUD refuses larger or malformed readings and keeps the last good
+one. It never writes to hwmon, PWM, platform-profile, LED or RGB interfaces:
+hardware control is intentionally out of scope and left to the dedicated
+tools the PLATFORM tab lists. The HUD polls it only while a sensor tab is open.
+
 ## Deep Signals
 
 Deep Signals is read-only. It reads `/proc`, `/sys` and bounded command

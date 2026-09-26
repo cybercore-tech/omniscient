@@ -52,6 +52,41 @@ Item {
   // small no matter how large the report is.
   property int liveChunkDelegates: 0
 
+  // Tabs. AUDIT is the original surface; the sensor tabs show live,
+  // read-only hardware readings from `omniscient --sensors`, polled only
+  // while the panel is open on one of them.
+  property string tab: "audit"
+  readonly property var tabs: [
+    { id: "audit", label: "AUDIT" },
+    { id: "sensors", label: "SENSORS" },
+    { id: "drives", label: "DRIVES" },
+    { id: "platform", label: "PLATFORM" }
+  ]
+  readonly property int maxSensorBytes: 600000
+  property var sensors: null
+  property string sensorError: ""
+  property int sensorPolls: 0
+  readonly property bool sensorsWanted: root.opened && root.tab !== "audit"
+
+  function acceptSensors(raw) {
+    var text = String(raw || "").trim()
+    if (text.length > root.maxSensorBytes) {
+      root.sensorError = "SENSOR READING TOO LARGE"
+      return
+    }
+    try {
+      var value = JSON.parse(text)
+      if (value !== null && typeof value === "object" && value.version === 1 && value.cpu) {
+        root.sensors = value
+        root.sensorError = ""
+      } else {
+        root.sensorError = "UNEXPECTED SENSOR READING"
+      }
+    } catch (error) {
+      root.sensorError = "INVALID SENSOR READING"
+    }
+  }
+
   onReportTextChanged: root.chunkReport()
   onPackageCategoryChanged: root.chunkReport()
 
@@ -594,6 +629,30 @@ Item {
     onTriggered: reportReader.running = true
   }
 
+  Process {
+    id: sensorReader
+    command: [root.omniscientBinary, "--sensors"]
+    stdout: StdioCollector {
+      waitForEnd: true
+      onStreamFinished: root.acceptSensors(text)
+    }
+    onExited: function(exitCode) { // qmllint disable signal-handler-parameters
+      if (exitCode !== 0) root.sensorError = "SENSOR READING FAILED / CODE " + exitCode
+    }
+  }
+
+  Timer {
+    interval: 2000
+    repeat: true
+    running: root.sensorsWanted
+    triggeredOnStart: true
+    onTriggered: {
+      if (sensorReader.running) return
+      root.sensorPolls++
+      sensorReader.running = true
+    }
+  }
+
   Component {
     id: reportChunkDelegate
 
@@ -685,10 +744,56 @@ Item {
 
         Rectangle { Layout.fillWidth: true; implicitHeight: 1; color: "#263445" }
 
+        RowLayout {
+          Layout.fillWidth: true
+          spacing: 6
+          Repeater {
+            model: root.tabs
+            delegate: Rectangle {
+              id: tabButton
+              required property var modelData
+              readonly property bool current: root.tab === tabButton.modelData.id
+              property bool hovered: false
+              Layout.preferredWidth: tabLabel.implicitWidth + 28
+              Layout.preferredHeight: 28
+              radius: 3
+              color: tabButton.current ? "#1a2940" : (tabButton.hovered ? "#142033" : "#0d1320")
+              border.width: 1
+              border.color: tabButton.current ? "#52e8ff" : "#263445"
+              Text {
+                id: tabLabel
+                anchors.centerIn: parent
+                text: tabButton.modelData.label
+                color: tabButton.current ? "#52e8ff" : "#8290a4"
+                font.family: "monospace"
+                font.pixelSize: root.fontSmall
+                font.bold: tabButton.current
+              }
+              MouseArea {
+                anchors.fill: parent
+                hoverEnabled: true
+                cursorShape: Qt.PointingHandCursor
+                onEntered: tabButton.hovered = true
+                onExited: tabButton.hovered = false
+                onClicked: root.tab = tabButton.modelData.id
+              }
+            }
+          }
+          Item { Layout.fillWidth: true }
+          Text {
+            visible: root.tab !== "audit"
+            text: root.sensorError.length ? root.sensorError : "LIVE / READ-ONLY / EVERY 2 S"
+            color: root.sensorError.length ? "#ff667d" : "#8290a4"
+            font.family: "monospace"
+            font.pixelSize: root.fontMicro
+          }
+        }
+
         Flickable {
           boundsBehavior: Flickable.StopAtBounds
           ScrollBar.vertical: HudScrollBar {}
           id: auditBodyScroll
+          visible: root.tab === "audit"
           Layout.fillWidth: true
           Layout.fillHeight: true
           Layout.minimumHeight: 0
@@ -1221,6 +1326,27 @@ Item {
         }
 
           }
+        }
+
+        SensorsView {
+          visible: root.tab === "sensors"
+          Layout.fillWidth: true
+          Layout.fillHeight: true
+          reading: root.sensors
+        }
+
+        DrivesView {
+          visible: root.tab === "drives"
+          Layout.fillWidth: true
+          Layout.fillHeight: true
+          reading: root.sensors
+        }
+
+        PlatformView {
+          visible: root.tab === "platform"
+          Layout.fillWidth: true
+          Layout.fillHeight: true
+          reading: root.sensors
         }
       }
 

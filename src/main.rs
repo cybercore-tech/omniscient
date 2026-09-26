@@ -7,6 +7,8 @@ fn main() -> Result<()> {
             .get(index + 1)
             .context("--fix requires an allowlisted fix id")?;
         omniscient::fix::run(fix_id)
+    } else if args.iter().any(|arg| arg == "--sensors") {
+        omniscient::sensors::run()
     } else if args.iter().any(|arg| arg == "--hud") {
         omniscient::headless::run()
     } else if args.iter().any(|arg| arg == "--packages") {

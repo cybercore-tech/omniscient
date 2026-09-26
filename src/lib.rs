@@ -12,6 +12,7 @@ pub mod pathcheck;
 pub mod paths;
 pub mod report;
 pub mod runner;
+pub mod sensors;
 pub mod signals;
 pub mod snapshot;
 pub mod suggestions;

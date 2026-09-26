@@ -161,7 +161,11 @@ cp -- "$ROOT_DIR/tests/plugin/shell.qml" "$harness/shell.qml"
 ln -s "$SHELL_DIR/Commons" "$harness/Commons"
 ln -s "$SHELL_DIR/Ui" "$harness/Ui"
 fixtures="$WORK/fixtures"
-python3 "$ROOT_DIR/tests/plugin/make-fixtures.py" "$fixtures"
+# The sensor tabs run the real binary (against a fake sysfs tree).
+CARGO_TARGET_DIR="${CARGO_TARGET_DIR:-$ROOT_DIR/.cargo-target}" cargo build --release --locked --quiet \
+    || fail "building the release binary for the sensor tabs"
+real_binary="${CARGO_TARGET_DIR:-$ROOT_DIR/.cargo-target}/release/omniscient"
+python3 "$ROOT_DIR/tests/plugin/make-fixtures.py" "$fixtures" "$real_binary"
 
 log="$WORK/harness.log"
 samples="$WORK/rss.samples"

@@ -3,7 +3,7 @@
 ![gate](https://img.shields.io/badge/gate-scripts%2Fgate.sh%20full-52e8ff)
 ![clippy](https://img.shields.io/badge/clippy-pedantic%20denied-a56bff)
 ![qmllint](https://img.shields.io/badge/qmllint-all%20categories%2C%200%20warnings-c8e967)
-![harness](https://img.shields.io/badge/plugin%20harness-54%20checks-ffb454)
+![harness](https://img.shields.io/badge/plugin%20harness-69%20checks-ffb454)
 
 Omniscient has two halves that fail in different ways: a Rust audit engine
 that runs system commands, and a Quickshell plugin that runs **inside the
@@ -64,7 +64,7 @@ inside a systemd scope capped at 1 GiB with no swap. The live desktop shell is
 never touched. `tests/plugin/make-fixtures.py` generates synthetic fixtures;
 no real audit data is used or committed.
 
-The harness (`tests/plugin/shell.qml`) checks, among 54 assertions:
+The harness (`tests/plugin/shell.qml`) checks, among 69 assertions:
 
 - an unchanged snapshot causes **no** reassignment (the old reader replaced
   every list every second, rebuilding every delegate);
@@ -85,6 +85,12 @@ The harness (`tests/plugin/shell.qml`) checks, among 54 assertions:
 - an idle panel performs **zero** snapshot reads (file watching, not
   polling), and fixtures are installed the way the backend publishes them
   (temporary file, then rename);
+- the sensor tabs, end to end: the fixture HOME's `omniscient` forwards
+  `--sensors` to the real release binary reading a fake Ryzen + Radeon + ASUS
+  + NVMe + drivetemp sysfs tree (`OMNISCIENT_SYSFS_ROOT`); CPU, GPU, fan-curve,
+  drive, profile and ASUS values are checked, bad and oversized readings are
+  refused while the last good one is kept, polling happens only on a sensor
+  tab and stops when leaving it;
 - a soak rewrites the snapshot every 3 s with the largest report open.
 
 The script then fails on any runtime QML warning from the plugin, a peak RSS
