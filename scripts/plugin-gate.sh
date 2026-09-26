@@ -10,6 +10,7 @@
 #                              instead of starting a nested Hyprland
 #   OMNI_SOAK_SECONDS          soak duration (default 60)
 #   OMNI_PLUGIN_DIR            plugin to test (default: omarchy-plugin)
+#   OMNI_HARNESS_LOG           copy the full harness log to this path
 #
 # The runtime pass never touches the live desktop shell: it runs a separate
 # quickshell process with its own XDG_RUNTIME_DIR, HOME and state, on a
@@ -196,6 +197,10 @@ while kill -0 "$qs_pid" 2>/dev/null; do
 done
 status=0
 wait "$qs_pid" || status=$?
+# OMNI_HARNESS_LOG=<path> keeps the full harness log for debugging.
+if [[ -n "${OMNI_HARNESS_LOG:-}" ]]; then
+    cp -- "$log" "$OMNI_HARNESS_LOG"
+fi
 
 strip() { sed -E 's/\x1b\[[0-9;]*m//g' "$1"; }
 strip "$log" | grep -E ' (STEP|PASS|FAIL|RESULT) ' | sed -E 's/^.*(STEP|PASS|FAIL|RESULT) /  \1 /'

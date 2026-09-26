@@ -280,8 +280,8 @@ open on one of them.
 | Tab | Shows |
 | --- | --- |
 | SENSORS | CPU model, package temperature (Intel `coretemp`, AMD `k10temp`/`zenpower` Tctl/Tccd), utilization, package power (elevated only: RAPL is root-readable), governor, boost, amd-pstate, per-core clocks; memory and swap; GPUs (amdgpu busy %, VRAM, clocks, power, fan, edge/junction/memory temperatures; Intel clocks); every hwmon chip's temperatures, fans, PWM duty and fan curves |
-| DRIVES | live temperature of every drive: NVMe (Composite and sensors) always, SATA through the `drivetemp` kernel module (the tab says how to load it) |
-| PLATFORM | vendor and model, ACPI platform profile and its choices, ASUS WMI thermal policy and keyboard backlight, control tools present (asusctl, rog-control-center, supergfxctl, openrgb, coolercontrol, fancontrol, nvidia-smi) |
+| DRIVES | live temperature of every drive: NVMe (Composite and sensors) always, SATA through the kernel's `drivetemp` driver, which the tab can enable with one confirmed fix |
+| PLATFORM | vendor and model, power profile (ACPI or power-profiles-daemon) and its choices, CPU energy preference, ASUS WMI thermal policy and keyboard backlight, Lenovo ideapad fan mode / conservation / Fn lock / camera, batteries, control tools present and whether they are configured |
 
 It is **monitoring only**. Omniscient never writes fan curves, profiles or
 RGB settings; the PLATFORM tab lists the tools that do. Every path is read
@@ -406,7 +406,7 @@ Run the local quality gates before publishing a change:
 test target, doctests, rustdoc with warnings fatal, shell syntax checks, the
 static security gate, and the plugin gate. The plugin gate lints every QML
 file with Qt 6 `qmllint` at the strictest setting, then loads the real plugin
-into a nested, memory-capped compositor and drives it through 69 checks,
+into a nested, memory-capped compositor and drives it through 73 checks,
 including a 75 MB report and a memory soak. It needs an Omarchy session, so CI
 skips it (`OMNISCIENT_SKIP_PLUGIN_GATE=1`); run it locally before pushing.
 See [docs/TESTING.md](docs/TESTING.md).

@@ -195,7 +195,7 @@ Singleton {
     preload: false
     watchChanges: root.runtimePath.length > 0
     printErrors: false
-    onFileChanged: root.refresh()
+    onFileChanged: settle.restart()
   }
 
   FileView {
@@ -203,7 +203,16 @@ Singleton {
     preload: false
     watchChanges: true
     printErrors: false
-    onFileChanged: root.refresh()
+    onFileChanged: settle.restart()
+  }
+
+  // File events are debounced: a burst of events (a writer's temporary file,
+  // rename, attribute change) becomes one read after the writes settle, so
+  // a read can never land between two halves of one publish.
+  Timer {
+    id: settle
+    interval: 150
+    onTriggered: root.refresh()
   }
 
   // Safety net for filesystems or limits where inotify is unavailable.

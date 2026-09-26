@@ -24,6 +24,8 @@ Item {
   property string reportText: ""
   property string runnerMessage: ""
   property string pendingFixId: ""
+  property string pendingFixTitle: ""
+  property string pendingFixCommand: ""
   property string fixMessage: ""
   property bool confirmingFix: false
   property bool confirmingHelp: false
@@ -122,9 +124,18 @@ Item {
     return SnapshotReader.healthColor(SnapshotReader.healthScore)
   }
 
-  function requestFix(id) {
+  // The confirmation describes the fix it will run, looked up by id (not the
+  // fix-center selection, which can point at a different suggestion).
+  // Fixes offered outside the suggestion list pass their own description.
+  function requestFix(id, title, command) {
+    var match = null
+    for (var i = 0; i < SnapshotReader.suggestions.length; i++) {
+      if (String(SnapshotReader.suggestions[i].id) === String(id)) match = SnapshotReader.suggestions[i]
+    }
     root.confirmingHelp = false
-    root.pendingFixId = id
+    root.pendingFixId = String(id || "")
+    root.pendingFixTitle = String(title || (match ? match.title : "") || id)
+    root.pendingFixCommand = String(command || (match ? match.command : "") || "not available")
     root.confirmingFix = true
   }
 
@@ -1340,6 +1351,9 @@ Item {
           Layout.fillWidth: true
           Layout.fillHeight: true
           reading: root.sensors
+          fixMessage: root.fixMessage
+          fixRunning: fixRunner.running
+          onFixRequested: function(id, title, command) { root.requestFix(id, title, command) }
         }
 
         PlatformView {
@@ -1381,7 +1395,7 @@ Item {
             }
             Text {
               Layout.fillWidth: true
-              text: "This will run an allowlisted package repair with elevated permissions.\n\nFinding: " + String(root.selectedFix().title || root.pendingFixId) + "\nCommand: " + String(root.selectedFix().command || "not available") + "\n\nAllow only if you reviewed the explanation and proposed command. A fix report will be written after completion."
+              text: "This will run an allowlisted repair with elevated permissions.\n\nFix: " + root.pendingFixTitle + "\nCommand: " + root.pendingFixCommand + "\n\nAllow only if you reviewed the explanation and proposed command. A fix report will be written after completion."
               color: "#c8d2e8"
               font.family: "monospace"
               font.pixelSize: root.fontBody

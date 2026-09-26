@@ -75,11 +75,21 @@ unless the dashboard's single `sudo -v` credential is cached. Per-command
 ## Repair actions
 
 Repair actions are deliberately narrow. The panel requires an explicit user
-confirmation, then accepts only IDs in the `install-tool:<tool>` form. The
-tool-to-package mapping is compiled into the binary. The only write operation
-is an allowlisted `pacman -S --needed --noconfirm <package>` invocation; there
-is no arbitrary command, package name, removal, upgrade, service-management,
-or sudoers-editing interface. Every attempt writes a Markdown result report.
+confirmation (which names the exact fix and command, looked up by id), then
+accepts only two compiled forms:
+
+- `install-tool:<tool>`: an allowlisted
+  `pacman -S --needed --noconfirm <package>`, with the tool-to-package
+  mapping compiled into the binary;
+- `enable-sensor:drivetemp`: `modprobe drivetemp` (the kernel's read-only
+  SATA temperature driver) plus one file,
+  `/etc/modules-load.d/omniscient-drivetemp.conf`, written atomically and
+  never through a symlink, so it loads at boot. `drivetemp` is the only
+  module on the allowlist.
+
+There is no arbitrary command, package name, module name, removal, upgrade,
+service-management, or sudoers-editing interface. Every attempt writes a
+Markdown result report. To undo the sensor fix, delete that file.
 
 ## Network and persistence
 

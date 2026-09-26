@@ -107,6 +107,8 @@ pub struct Drive {
     pub celsius: Option<f64>,
     pub temps: Vec<Temp>,
     pub hint: String,
+    /// Fix-center id that would make a temperature available, if any.
+    pub fix: String,
 }
 
 #[derive(Clone, Debug, Default, PartialEq, Serialize)]
@@ -117,6 +119,24 @@ pub struct Asus {
     pub throttle_policy: Option<String>,
 }
 
+/// Lenovo `ideapad_acpi` state (read-only).
+#[derive(Clone, Debug, Default, PartialEq, Serialize)]
+pub struct Ideapad {
+    pub fan_mode: Option<String>,
+    pub conservation_mode: Option<bool>,
+    pub fn_lock: Option<bool>,
+    pub camera_power: Option<bool>,
+    pub usb_charging: Option<bool>,
+}
+
+#[derive(Clone, Debug, Default, PartialEq, Serialize)]
+pub struct Battery {
+    pub name: String,
+    pub status: String,
+    pub capacity_percent: Option<u64>,
+    pub power_watts: Option<f64>,
+}
+
 #[derive(Clone, Debug, Default, PartialEq, Serialize)]
 pub struct Platform {
     pub vendor: String,
@@ -124,7 +144,14 @@ pub struct Platform {
     pub profile: Option<String>,
     pub profile_choices: Vec<String>,
     pub asus: Option<Asus>,
-    /// Control tools found on `PATH` (Omniscient never drives them).
+    /// Where `profile` came from: "acpi" or "power-profiles-daemon".
+    pub profile_source: String,
+    pub energy_preference: Option<String>,
+    pub energy_preference_choices: Vec<String>,
+    pub ideapad: Option<Ideapad>,
+    pub batteries: Vec<Battery>,
+    /// Control tools found on `PATH` (Omniscient never drives them), with a
+    /// state note such as "not configured".
     pub tools: Vec<String>,
 }
 
@@ -417,9 +444,7 @@ fn read_cpu(root: &Path, chips: &[Chip], sample: Duration, notes: &mut Vec<Strin
             Some(((b - a) / sample.as_secs_f64() / 10_000.0).round() / 100.0)
         }
         (None, _) if root.join("sys/class/powercap/intel-rapl:0").exists() => {
-            notes.push(
-                "CPU package power needs the elevated audit (RAPL energy is root-only)".to_owned(),
-            );
+            notes.push("CPU package power is shown during the elevated audit: the kernel makes the RAPL energy counter root-only.".to_owned());
             None
         }
         _ => None,
@@ -537,10 +562,15 @@ pub fn read_drives(root: &Path) -> Vec<Drive> {
                 .find(|t| t.label == "Composite")
                 .or_else(|| temps.first())
                 .map(|t| t.celsius);
-            let hint = match (celsius, kind) {
-                (None, "sata") => "load the drivetemp kernel module for live SATA temperatures (modprobe drivetemp)".to_owned(),
-                (None, "usb") => "USB bridges rarely report temperature".to_owned(),
-                _ => String::new(),
+            let drivetemp_loaded = root.join("sys/module/drivetemp").exists();
+            let (hint, fix) = match (celsius, kind) {
+                (None, "sata") if !drivetemp_loaded => (
+                    "Live SATA temperatures need the kernel's read-only drivetemp sensor driver, which is not loaded.".to_owned(),
+                    "enable-sensor:drivetemp".to_owned(),
+                ),
+                (None, "sata") => ("This drive does not report temperature through drivetemp.".to_owned(), String::new()),
+                (None, "usb") => ("USB bridges rarely report temperature.".to_owned(), String::new()),
+                _ => (String::new(), String::new()),
             };
             Drive {
                 name,
@@ -549,12 +579,97 @@ pub fn read_drives(root: &Path) -> Vec<Drive> {
                 celsius,
                 temps,
                 hint,
+                fix,
             }
         })
         .collect()
 }
 
 // --------------------------------------------------------------- platform --
+
+/// Current profile and choices from `powerprofilesctl list` output
+/// ("* performance:" marks the active one).
+#[must_use]
+pub fn parse_power_profiles(list: &str) -> (Option<String>, Vec<String>) {
+    let mut current = None;
+    let mut choices = Vec::new();
+    for line in list.lines() {
+        if line.starts_with("    ") {
+            continue;
+        }
+        let trimmed = line.trim();
+        let (active, rest) = trimmed
+            .strip_prefix("* ")
+            .map_or((false, trimmed), |rest| (true, rest));
+        let Some(name) = rest.strip_suffix(':') else {
+            continue;
+        };
+        if name.is_empty() || name.contains(char::is_whitespace) {
+            continue;
+        }
+        choices.push(name.to_owned());
+        if active {
+            current = Some(name.to_owned());
+        }
+    }
+    (current, choices)
+}
+
+/// Names the `ideapad_acpi` fan modes.
+#[must_use]
+pub fn ideapad_fan_mode(raw: &str) -> String {
+    match raw {
+        "0" => "super silent".to_owned(),
+        "1" => "standard".to_owned(),
+        "2" => "dust cleaning".to_owned(),
+        "4" => "efficient thermal dissipation".to_owned(),
+        other => format!("not reported by this model ({other})"),
+    }
+}
+
+fn read_ideapad(root: &Path) -> Option<Ideapad> {
+    let dir = entries(&root.join("sys/bus/platform/devices"), "VPC2004")
+        .into_iter()
+        .next()?;
+    let flag = |name: &str| read(&dir.join(name)).map(|v| v == "1");
+    Some(Ideapad {
+        fan_mode: read(&dir.join("fan_mode")).map(|raw| ideapad_fan_mode(&raw)),
+        conservation_mode: flag("conservation_mode"),
+        fn_lock: flag("fn_lock"),
+        camera_power: flag("camera_power"),
+        usb_charging: flag("usb_charging"),
+    })
+}
+
+fn read_batteries(root: &Path) -> Vec<Battery> {
+    entries(&root.join("sys/class/power_supply"), "")
+        .into_iter()
+        .filter(|dir| {
+            read(&dir.join("type")).as_deref() == Some("Battery")
+                && read(&dir.join("scope")).as_deref() != Some("Device")
+        })
+        .map(|dir| Battery {
+            name: dir
+                .file_name()
+                .map_or_else(String::new, |n| n.to_string_lossy().into_owned()),
+            status: read(&dir.join("status")).unwrap_or_default(),
+            capacity_percent: read_u64(&dir.join("capacity")),
+            power_watts: read_f64(&dir.join("power_now"))
+                .filter(|micro| *micro > 0.0)
+                .map(|micro| (micro / 10_000.0).round() / 100.0),
+        })
+        .collect()
+}
+
+fn power_profiles_list() -> Option<String> {
+    let exe = crate::pathcheck::resolve("powerprofilesctl")?;
+    let limits = crate::capture::Limits {
+        timeout: Duration::from_secs(3),
+        retain_bytes: 64 * 1024,
+    };
+    let out = crate::capture::run(&exe, &["list"], limits).ok()?;
+    out.success().then(|| out.stdout.text())
+}
 
 fn read_platform(root: &Path, detect_tools: bool) -> Platform {
     let dmi = root.join("sys/class/dmi/id");
@@ -584,22 +699,52 @@ fn read_platform(root: &Path, detect_tools: bool) -> Platform {
             "coolercontrol",
             "fancontrol",
             "nvidia-smi",
+            "powerprofilesctl",
         ]
         .into_iter()
         .filter(|tool| crate::pathcheck::exists(tool))
-        .map(str::to_owned)
+        .map(|tool| {
+            if tool == "fancontrol" && !root.join("etc/fancontrol").exists() {
+                "fancontrol (installed, not configured: run pwmconfig)".to_owned()
+            } else {
+                tool.to_owned()
+            }
+        })
         .collect()
     } else {
         Vec::new()
     };
+    let cpufreq = root.join("sys/devices/system/cpu/cpu0/cpufreq");
+    let mut profile = read(&acpi.join("platform_profile"));
+    let mut profile_choices = read(&acpi.join("platform_profile_choices"))
+        .map(|v| v.split_whitespace().map(str::to_owned).collect())
+        .unwrap_or_default();
+    let mut profile_source = if profile.is_some() {
+        "acpi".to_owned()
+    } else {
+        String::new()
+    };
+    if profile.is_none() && detect_tools {
+        if let Some(list) = power_profiles_list() {
+            (profile, profile_choices) = parse_power_profiles(&list);
+            if profile.is_some() {
+                "power-profiles-daemon".clone_into(&mut profile_source);
+            }
+        }
+    }
     Platform {
         vendor: read(&dmi.join("sys_vendor")).unwrap_or_default(),
         product: read(&dmi.join("product_name")).unwrap_or_default(),
-        profile: read(&acpi.join("platform_profile")),
-        profile_choices: read(&acpi.join("platform_profile_choices"))
+        profile,
+        profile_choices,
+        asus,
+        profile_source,
+        energy_preference: read(&cpufreq.join("energy_performance_preference")),
+        energy_preference_choices: read(&cpufreq.join("energy_performance_available_preferences"))
             .map(|v| v.split_whitespace().map(str::to_owned).collect())
             .unwrap_or_default(),
-        asus,
+        ideapad: read_ideapad(root),
+        batteries: read_batteries(root),
         tools,
     }
 }
@@ -637,11 +782,10 @@ pub fn read_all(root: &Path, sample: Duration, detect_tools: bool) -> Reading {
     let chips = read_chips(root);
     let cpu = read_cpu(root, &chips, sample, &mut notes);
     let drives = read_drives(root);
-    if drives
-        .iter()
-        .any(|d| d.kind == "sata" && d.celsius.is_none())
-    {
-        notes.push("SATA temperatures appear once the drivetemp module is loaded".to_owned());
+    if drives.iter().any(|d| d.fix == "enable-sensor:drivetemp") {
+        notes.push(
+            "SATA temperatures: enable the drivetemp sensor driver from the DRIVES tab.".to_owned(),
+        );
     }
     Reading {
         version: 1,
@@ -745,7 +889,7 @@ mod tests {
         assert_eq!(reading.gpus[0].vendor, "Intel");
         assert_eq!(reading.gpus[0].clock_mhz, Some(350.0));
         assert_eq!(reading.drives[0].kind, "sata");
-        assert!(reading.drives[0].hint.contains("drivetemp"));
+        assert_eq!(reading.drives[0].fix, "enable-sensor:drivetemp");
         assert!(
             reading.notes.iter().any(|n| n.contains("RAPL")),
             "unreadable RAPL is explained"
@@ -889,6 +1033,68 @@ mod tests {
             (Some(2), Some(3))
         );
         assert!(platform.product.contains("Zephyrus"));
+        fs::remove_dir_all(root).expect("cleanup");
+    }
+
+    #[test]
+    fn power_profiles_and_ideapad_parse() {
+        // Real `powerprofilesctl list` output from the dev laptop.
+        let list = "* performance:\n    CpuDriver:\tintel_pstate\n    Degraded:   no\n\n  balanced:\n    CpuDriver:\tintel_pstate\n    PlatformDriver:\tplaceholder\n\n  power-saver:\n    CpuDriver:\tintel_pstate\n";
+        let (current, choices) = parse_power_profiles(list);
+        assert_eq!(current.as_deref(), Some("performance"));
+        assert_eq!(choices, vec!["performance", "balanced", "power-saver"]);
+        assert_eq!(ideapad_fan_mode("1"), "standard");
+        assert_eq!(ideapad_fan_mode("133"), "not reported by this model (133)");
+        let root = tree(&[
+            ("sys/bus/platform/devices/VPC2004:00/fan_mode", "133\n"),
+            (
+                "sys/bus/platform/devices/VPC2004:00/conservation_mode",
+                "1\n",
+            ),
+            ("sys/bus/platform/devices/VPC2004:00/camera_power", "0\n"),
+            ("sys/class/power_supply/BAT0/type", "Battery\n"),
+            ("sys/class/power_supply/BAT0/status", "Not charging\n"),
+            ("sys/class/power_supply/BAT0/capacity", "95\n"),
+            ("sys/class/power_supply/BAT0/power_now", "6420000\n"),
+            ("sys/class/power_supply/hidpp_battery_0/type", "Battery\n"),
+            ("sys/class/power_supply/hidpp_battery_0/scope", "Device\n"),
+            (
+                "sys/devices/system/cpu/cpu0/cpufreq/energy_performance_preference",
+                "performance\n",
+            ),
+            (
+                "sys/devices/system/cpu/cpu0/cpufreq/energy_performance_available_preferences",
+                "default performance balance_performance balance_power power\n",
+            ),
+            ("sys/block/sda/device/model", "SPCC Solid State\n"),
+        ]);
+        let reading = read_all(&root, Duration::ZERO, false);
+        let ideapad = reading.platform.ideapad.clone().expect("ideapad");
+        assert_eq!(ideapad.conservation_mode, Some(true));
+        assert_eq!(ideapad.camera_power, Some(false));
+        assert_eq!(ideapad.fn_lock, None);
+        assert_eq!(
+            reading.platform.batteries.len(),
+            1,
+            "peripheral batteries are skipped"
+        );
+        assert_eq!(reading.platform.batteries[0].power_watts, Some(6.42));
+        assert_eq!(
+            reading.platform.energy_preference.as_deref(),
+            Some("performance")
+        );
+        assert_eq!(reading.platform.energy_preference_choices.len(), 5);
+        assert_eq!(
+            reading.drives[0].fix, "enable-sensor:drivetemp",
+            "an unloaded drivetemp offers the fix"
+        );
+        fs::create_dir_all(root.join("sys/module/drivetemp")).expect("module dir");
+        let loaded = read_all(&root, Duration::ZERO, false);
+        assert!(
+            loaded.drives[0].fix.is_empty(),
+            "no fix once the driver is loaded"
+        );
+        assert!(loaded.drives[0].hint.contains("does not report"));
         fs::remove_dir_all(root).expect("cleanup");
     }
 

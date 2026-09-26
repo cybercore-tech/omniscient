@@ -6,6 +6,11 @@ All notable changes to Omniscient are documented here.
 
 ### Added
 
+- DRIVES: **ENABLE LIVE SATA TEMPERATURES** runs the new allowlisted fix
+  `enable-sensor:drivetemp` (confirm, one authorization, fix report).
+- PLATFORM: power profile from power-profiles-daemon when ACPI has none, CPU
+  energy preference, Lenovo ideapad fan mode / battery conservation / Fn lock
+  / camera power, batteries, and whether fancontrol is actually configured.
 - HUD tabs **SENSORS / DRIVES / PLATFORM** backed by the new read-only
   `omniscient --sensors` (`src/sensors.rs`): CPU (Intel coretemp, AMD
   k10temp/zenpower, amd-pstate, per-core clocks, utilization, RAPL power when
@@ -31,6 +36,11 @@ All notable changes to Omniscient are documented here.
 
 ### Fixed
 
+- The repair confirmation described the fix-center *selection* rather than
+  the fix being run, so REVIEW / APPLY on any suggestion but the selected one
+  showed the wrong finding and command. It now looks the fix up by id.
+- Snapshot file events are debounced (150 ms) so a publish that produces two
+  events (temporary file, rename) is read once, after it settles.
 - Elevated commands inside modules could open password prompts (per-command
   `sudo` without `-n`, or `pkexec`). They now never prompt.
 - `failed systemd units: ●`: the health check parsed systemctl's bullet

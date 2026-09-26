@@ -113,6 +113,16 @@ ShellRoot {
     } },
     { name: "restore snapshot", wait: 1000, run: function() {
       harness.check(SnapshotReader.available && SnapshotReader.healthScore === 90, "valid snapshot restores", SnapshotReader.healthScore)
+      burst.remaining = 20
+      burst.running = true
+    } },
+    { name: "rapid rewrites", wait: 8000, until: function() { return !burst.running && !installer.running && !mover.running }, run: function() {} },
+    { name: "rapid rewrites settle", wait: 1500, run: function() {} },
+    { name: "rapid rewrites result", wait: 100, run: function() {
+      // The burst ends on snapshot.json (health 90); whatever order reads and
+      // process signals arrive in, the reader must end on the last write.
+      harness.check(SnapshotReader.available && SnapshotReader.healthScore === 90 && SnapshotReader.state === "complete",
+        "the last of 20 rapid rewrites wins", SnapshotReader.available + " / " + SnapshotReader.healthScore + " / " + SnapshotReader.state)
     } },
     { name: "path policy", wait: 500, run: function() {
       var p = harness.panel
@@ -247,8 +257,22 @@ ShellRoot {
       harness.check(harness.panel.sensorError === "INVALID SENSOR READING" && harness.panel.sensors !== null, "a bad reading keeps the last good one")
       harness.panel.acceptSensors("x".repeat(harness.panel.maxSensorBytes + 1))
       harness.check(harness.panel.sensorError === "SENSOR READING TOO LARGE", "an oversized reading is refused")
-      harness.panel.tab = "audit"
-      harness.pollsBefore = harness.panel.sensorPolls
+      var p = harness.panel
+      p.selectedFixIndex = 5
+      p.requestFix("install-tool:smartctl")
+      harness.check(p.confirmingFix && p.pendingFixTitle === "smartctl missing" && p.pendingFixCommand.indexOf("smartmontools") >= 0,
+        "the confirmation describes the requested fix, not the fix-center selection", p.pendingFixTitle)
+      p.confirmingFix = false
+      p.requestFix("enable-sensor:drivetemp", "Enable drivetemp", "modprobe drivetemp")
+      harness.check(p.pendingFixId === "enable-sensor:drivetemp" && p.pendingFixTitle === "Enable drivetemp",
+        "a fix offered outside the list carries its own description", p.pendingFixTitle)
+      p.applyFix()
+      p.tab = "audit"
+      harness.pollsBefore = p.sensorPolls
+    } },
+    { name: "fix result", wait: 5000, until: function() { return harness.panel.fixMessage === "fake audit failed" }, run: function() {} },
+    { name: "fix reported", wait: 200, run: function() {
+      harness.check(harness.panel.fixMessage === "fake audit failed", "a failed fix reports its error", harness.panel.fixMessage)
     } },
     { name: "polling stops", wait: 5000, run: function() {} },
     { name: "polling stopped", wait: 500, run: function() {
@@ -295,6 +319,21 @@ ShellRoot {
       harness.soakRewrites++
       harness.install(harness.soakRewrites % 2 ? "snapshot.json" : "snapshot-changed.json")
       if (elapsed >= harness.soakSeconds * 1000) running = false
+    }
+  }
+
+  // Rewrites the snapshot rapidly, alternating fixtures, ending on the
+  // normal snapshot.
+  Timer {
+    id: burst
+    property int remaining: 0
+    interval: 60
+    repeat: true
+    onTriggered: {
+      if (installer.running || mover.running) return
+      harness.install(burst.remaining % 2 ? "snapshot.json" : "snapshot-changed.json")
+      burst.remaining--
+      if (burst.remaining <= 0) running = false
     }
   }
 
