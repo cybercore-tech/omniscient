@@ -17,6 +17,7 @@ pub mod sensors;
 pub mod signals;
 pub mod snapshot;
 pub mod suggestions;
+pub mod trends;
 pub mod tui;
 pub mod watch;
 

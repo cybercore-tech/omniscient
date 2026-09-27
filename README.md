@@ -292,6 +292,16 @@ NVMe and ASUS layouts are tested on hardware without them.
 omniscient --sensors | jq .cpu
 ```
 
+## ⟦∿⟧ TRENDS // SEE IT COMING
+
+The **TRENDS** tab (`omniscient --trends`) draws 30 days of history with
+low, high and change, coloured by whether the direction is good: the health
+score after every audit, urgent + warning findings and CPU temperature at
+every hourly watch, omarchy-shell memory, and battery capacity against
+design. History files live in `<report root>/history/`, at most 500 samples
+each. The SENSORS tab adds live sparklines for the last two minutes of CPU
+temperature, load and GPU busy.
+
 ## ⟦◉⟧ WATCH // TOLD WHEN SOMETHING NEW BREAKS
 
 `omniscient --watch` is a light, unprivileged check for an hourly user timer:
@@ -419,6 +429,7 @@ src/history.rs     bounded trend files (battery, shell memory)
 src/sensors.rs     --sensors: live read-only hardware readings for the HUD tabs
 src/journal.rs     --journal: validated, collapsed journal views and offenders
 src/watch.rs       --watch: hourly new-problem alerts and watch.json
+src/trends.rs      --trends: 30-day series from the history files
 systemd/           omniscient-watch.service + .timer (scripts/install-watch.sh)
 tests/cli.rs       process-level tests of the commands the HUD reads
 src/elevation.rs   sudo default and pkexec opt-in backend selection
@@ -455,7 +466,7 @@ Run the local quality gates before publishing a change:
 test target, doctests, rustdoc with warnings fatal, shell syntax checks, the
 static security gate, and the plugin gate. The plugin gate lints every QML
 file with Qt 6 `qmllint` at the strictest setting, then loads the real plugin
-into a nested, memory-capped compositor and drives it through 93 checks,
+into a nested, memory-capped compositor and drives it through 100 checks,
 including a 75 MB report and a memory soak. It needs an Omarchy session, so CI
 skips it (`OMNISCIENT_SKIP_PLUGIN_GATE=1`); run it locally before pushing.
 See [docs/TESTING.md](docs/TESTING.md).

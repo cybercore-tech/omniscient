@@ -217,6 +217,9 @@ fn run_audit(selected_slugs: Option<&[&str]>) -> Result<()> {
     );
 
     refine_with_signals(&mut progress, &base_dir, &root, &timestamp)?;
+    if selected_slugs.is_none() {
+        crate::trends::record_health(progress.health.score);
+    }
     write_summary(&progress, &root, &timestamp)?;
     progress.summary_path = Some(root.join("SUMMARY.md").display().to_string());
     progress.publish(if selected_slugs.is_some() {

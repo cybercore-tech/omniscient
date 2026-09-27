@@ -7,6 +7,8 @@ fn main() -> Result<()> {
             .get(index + 1)
             .context("--fix requires an allowlisted fix id")?;
         omniscient::fix::run(fix_id)
+    } else if args.iter().any(|arg| arg == "--trends") {
+        omniscient::trends::run()
     } else if args.iter().any(|arg| arg == "--watch") {
         omniscient::watch::run(&args)
     } else if args.iter().any(|arg| arg == "--journal") {

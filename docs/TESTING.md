@@ -3,7 +3,7 @@
 ![gate](https://img.shields.io/badge/gate-scripts%2Fgate.sh%20full-52e8ff)
 ![clippy](https://img.shields.io/badge/clippy-pedantic%20denied-a56bff)
 ![qmllint](https://img.shields.io/badge/qmllint-all%20categories%2C%200%20warnings-c8e967)
-![harness](https://img.shields.io/badge/plugin%20harness-93%20checks-ffb454)
+![harness](https://img.shields.io/badge/plugin%20harness-100%20checks-ffb454)
 
 Omniscient has two halves that fail in different ways: a Rust audit engine
 that runs system commands, and a Quickshell plugin that runs **inside the
@@ -64,7 +64,7 @@ inside a systemd scope capped at 1 GiB with no swap. The live desktop shell is
 never touched. `tests/plugin/make-fixtures.py` generates synthetic fixtures;
 no real audit data is used or committed.
 
-The harness (`tests/plugin/shell.qml`) checks, among 93 assertions:
+The harness (`tests/plugin/shell.qml`) checks, among 100 assertions:
 
 - an unchanged snapshot causes **no** reassignment (the old reader replaced
   every list every second, rebuilding every delegate);
@@ -100,6 +100,9 @@ The harness (`tests/plugin/shell.qml`) checks, among 93 assertions:
   loaded with its badge count, status colour and tooltip checked; panel
   payloads (a notification opening the JOURNAL on a unit) honoured, and
   hostile, malformed and oversized payloads ignored;
+- trends: fixture history files read by the real `--trends`, each series'
+  points, units and last values, stats and the "worse" colouring of a falling
+  health score, and the live sensor ring buffer;
 - 20 rapid atomic rewrites end on the last one written;
 - the repair confirmation names the requested fix (by id, not the fix-center
   selection), and a failing fix reports its error;

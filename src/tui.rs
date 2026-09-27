@@ -523,6 +523,9 @@ fn worker(selected: &[usize], full: bool, tx: &Sender<WorkerMessage>) {
         .collect::<Vec<_>>();
 
     let health = apply_deep_signals(health, &root, &base_dir, &timestamp, full, &mut reports, tx);
+    if full {
+        crate::trends::record_health(health.score);
+    }
 
     let report_refs = reports
         .iter()

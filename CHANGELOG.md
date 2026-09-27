@@ -6,6 +6,11 @@ All notable changes to Omniscient are documented here.
 
 ### Added
 
+- **TRENDS** tab (`omniscient --trends`, `src/trends.rs`): 30-day sparklines
+  of health per audit, hourly watch alerts and CPU temperature, shell memory
+  and battery capacity, with low / high / change; audits and watches now
+  record these samples. Live two-minute sparklines (CPU temperature, load,
+  GPU busy) on the SENSORS tab.
 - **Watch mode** (`omniscient --watch`, `src/watch.rs`, hourly user timer via
   `scripts/install-watch.sh`): new warning/urgent findings become Omarchy
   notifications that open the HUD on the JOURNAL for the unit (or the WATCH

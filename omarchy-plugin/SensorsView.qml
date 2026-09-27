@@ -9,6 +9,8 @@ Flickable {
   id: view
 
   required property var reading
+  // Last two minutes of CPU temperature, utilization and GPU busy.
+  property var history: ({ cpu: [], util: [], gpu: [] })
 
   readonly property var cpu: view.reading ? view.reading.cpu : null
   readonly property var memory: view.reading ? view.reading.memory : null
@@ -85,6 +87,52 @@ Flickable {
               font.family: "monospace"; font.pixelSize: 28; font.bold: true
             }
             Text { Layout.alignment: Qt.AlignRight; text: view.cpu ? view.cpu.package_source : ""; color: SensorStyle.muted; font.family: "monospace"; font.pixelSize: 9 }
+          }
+        }
+
+        RowLayout {
+          Layout.fillWidth: true
+          spacing: 12
+          ColumnLayout {
+            Layout.fillWidth: true
+            Layout.preferredWidth: 1
+            spacing: 2
+            Text { text: "TEMPERATURE / 2 MIN"; color: SensorStyle.muted; font.family: "monospace"; font.pixelSize: 9 }
+            Sparkline {
+              Layout.fillWidth: true
+              Layout.preferredHeight: 36
+              values: view.history.cpu
+              stroke: SensorStyle.temperature(view.cpu ? view.cpu.package_celsius : null, 0)
+            }
+          }
+          ColumnLayout {
+            Layout.fillWidth: true
+            Layout.preferredWidth: 1
+            spacing: 2
+            Text { text: "LOAD / 2 MIN"; color: SensorStyle.muted; font.family: "monospace"; font.pixelSize: 9 }
+            Sparkline {
+              Layout.fillWidth: true
+              Layout.preferredHeight: 36
+              values: view.history.util
+              floor: 0
+              ceiling: 100
+              stroke: SensorStyle.load(view.cpu ? view.cpu.utilization_percent : null)
+            }
+          }
+          ColumnLayout {
+            visible: view.gpus.length > 0 && view.gpus[0].busy_percent !== null
+            Layout.fillWidth: true
+            Layout.preferredWidth: 1
+            spacing: 2
+            Text { text: "GPU BUSY / 2 MIN"; color: SensorStyle.muted; font.family: "monospace"; font.pixelSize: 9 }
+            Sparkline {
+              Layout.fillWidth: true
+              Layout.preferredHeight: 36
+              values: view.history.gpu
+              floor: 0
+              ceiling: 100
+              stroke: SensorStyle.accent
+            }
           }
         }
 

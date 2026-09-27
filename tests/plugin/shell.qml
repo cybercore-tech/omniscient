@@ -18,6 +18,7 @@ ShellRoot {
   readonly property int soakSeconds: Number(Quickshell.env("OMNI_SOAK_SECONDS") || "60")
   property var panel: panelLoader.item
   property var bar: barLoader.item
+  property var trends: harness.panel ? harness.panel.trendsView : null
   property int failures: 0
   property int checks: 0
   property int stepIndex: 0
@@ -328,6 +329,24 @@ ShellRoot {
     { name: "journal idle", wait: 4500, run: function() {} },
     { name: "journal stopped", wait: 200, run: function() {
       harness.check(harness.panel.journal.tails === harness.tailsBefore, "no journal reads off the tab", harness.panel.journal.tails - harness.tailsBefore)
+    } },
+    { name: "trends tab", wait: 6000, until: function() { return harness.trends.series.length >= 5 }, run: function() {
+      harness.check(harness.panel.sensorHistory.cpu.length >= 2 && harness.panel.sensorHistory.util.length >= 2,
+        "live sensor history accumulates while on the sensor tabs", harness.panel.sensorHistory.cpu.length)
+      harness.panel.tab = "trends"
+    } },
+    { name: "trends read", wait: 800, run: function() {
+      var byId = {}
+      harness.trends.series.forEach(function(s) { byId[s.id] = s })
+      harness.check(byId.health && byId.health.points.length === 5 && byId.health.points[4][1] === 80, "health trend per audit", byId.health ? byId.health.points.length : "missing")
+      harness.check(byId.cpu && byId.cpu.points.length === 6 && byId.alerts.points[5][1] === 6, "hourly watch trends", byId.cpu ? byId.cpu.points.length : "missing")
+      harness.check(byId["battery:BAT0"] && byId["battery:BAT0"].points.length === 4, "battery trend")
+      harness.check(byId.shell && byId.shell.points[3][1] === 439, "shell memory trend in MiB", byId.shell ? JSON.stringify(byId.shell.points[3]) : "missing")
+      var s = harness.trends.stats(byId.health.points, true)
+      harness.check(s.change === -12 && s.tint === "#ff8f70", "a falling health score is marked as worse", s.change + " " + s.tint)
+      var t = harness.trends.stats(byId.cpu.points, false)
+      harness.check(t.high === 71 && t.low === 48, "trend min and max", t.low + ".." + t.high)
+      harness.panel.tab = "audit"
     } },
     { name: "watch published", wait: 4000, until: function() { return WatchReader.available }, run: function() {
       watchInstaller.running = true

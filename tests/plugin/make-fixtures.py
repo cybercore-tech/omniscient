@@ -104,6 +104,20 @@ SYSROOT = {
 }
 
 
+def write_history(directory):
+    """Thirty days of trend samples ending now."""
+    import time
+    now = int(time.time())
+    day = 86400
+    def tsv(name, rows):
+        write(os.path.join(directory, f"{name}.tsv"), "".join(f"{e}\t{k}\t{v}\n" for e, k, v in rows))
+    tsv("health", [(now - (25 - n * 5) * day, "score", s) for n, s in enumerate([92, 90, 84, 88, 80])])
+    tsv("watch", [(now - (48 - h) * 3600, "alerts", a) for h, a in enumerate([1, 1, 2, 2, 3, 6])]
+               + [(now - (48 - h) * 3600, "cpu", c) for h, c in enumerate([48.0, 51.5, 63.0, 58.0, 71.0, 66.5])])
+    tsv("battery", [(now - (28 - n * 7) * day, "BAT0", b) for n, b in enumerate([78.0, 76.5, 75.0, 74.0])])
+    tsv("shell-memory", [(now - (10 - n) * 3600, "4242", kib) for n, kib in enumerate([380000, 395000, 410000, 450000])])
+
+
 def write_sysroot(root):
     for path, contents in SYSROOT.items():
         write(os.path.join(root, path), contents + ("" if contents.endswith("\n") else "\n"))
@@ -204,6 +218,7 @@ def main():
         ],
     }
     write(os.path.join(root, "watch.json"), json.dumps(watch))
+    write_history(os.path.join(root, "reports", "history"))
     sysroot = os.path.join(root, "sysroot")
     write_sysroot(sysroot)
     # The fake binary fails audits (to test error reporting) but forwards
@@ -216,6 +231,9 @@ def main():
     write(fake, "#!/bin/sh\n"
                 "if [ \"$1\" = \"--sensors\" ]; then\n"
                 f"  OMNISCIENT_SYSFS_ROOT='{sysroot}' exec '{real}' --sensors\n"
+                "fi\n"
+                "if [ \"$1\" = \"--trends\" ]; then\n"
+                f"  OMNISCIENT_REPORT_DIR='{root}/reports' exec '{real}' --trends\n"
                 "fi\n"
                 "if [ \"$1\" = \"--journal\" ]; then\n"
                 f"  PATH='{bindir}:/usr/bin:/bin' exec '{real}' \"$@\"\n"

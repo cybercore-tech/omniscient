@@ -59,13 +59,18 @@ Item {
   // while the panel is open on one of them.
   property string tab: "audit"
   readonly property alias journal: journalView
+  readonly property alias trendsView: trendsView
   readonly property var tabs: [
     { id: "audit", label: "AUDIT" },
     { id: "sensors", label: "SENSORS" },
     { id: "drives", label: "DRIVES" },
     { id: "platform", label: "PLATFORM" },
-    { id: "journal", label: "JOURNAL" }
+    { id: "journal", label: "JOURNAL" },
+    { id: "trends", label: "TRENDS" }
   ]
+  // The last two minutes of live readings for the SENSORS sparklines.
+  readonly property int sensorHistoryLength: 60
+  property var sensorHistory: ({ cpu: [], util: [], gpu: [] })
   readonly property int maxSensorBytes: 600000
   property var sensors: null
   property string sensorError: ""
@@ -83,6 +88,15 @@ Item {
       if (value !== null && typeof value === "object" && value.version === 1 && value.cpu) {
         root.sensors = value
         root.sensorError = ""
+        var push = function(list, sample) {
+          var next = list.concat([sample === null || sample === undefined ? NaN : Number(sample)])
+          return next.length > root.sensorHistoryLength ? next.slice(next.length - root.sensorHistoryLength) : next
+        }
+        root.sensorHistory = {
+          cpu: push(root.sensorHistory.cpu, value.cpu.package_celsius),
+          util: push(root.sensorHistory.util, value.cpu.utilization_percent),
+          gpu: push(root.sensorHistory.gpu, value.gpus && value.gpus.length ? value.gpus[0].busy_percent : null)
+        }
       } else {
         root.sensorError = "UNEXPECTED SENSOR READING"
       }
@@ -1420,6 +1434,7 @@ Item {
           Layout.fillWidth: true
           Layout.fillHeight: true
           reading: root.sensors
+          history: root.sensorHistory
         }
 
         DrivesView {
@@ -1437,6 +1452,15 @@ Item {
           Layout.fillWidth: true
           Layout.fillHeight: true
           reading: root.sensors
+        }
+
+        TrendsView {
+          id: trendsView
+          visible: root.tab === "trends"
+          Layout.fillWidth: true
+          Layout.fillHeight: true
+          binary: root.omniscientBinary
+          active: root.opened && root.tab === "trends"
         }
 
         JournalView {

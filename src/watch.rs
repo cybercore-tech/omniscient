@@ -271,6 +271,16 @@ pub fn run(args: &[String]) -> Result<()> {
         }
     }
     let alerting = alerts(&published);
+    let cpu = crate::sensors::read_all(&crate::sensors::root(), Duration::ZERO, false)
+        .cpu
+        .package_celsius;
+    crate::trends::record_watch(
+        published
+            .iter()
+            .filter(|p| p.severity >= Severity::Warning)
+            .count(),
+        cpu,
+    );
     if !quiet {
         if baseline {
             notify(&baseline_toast(published.len()));
