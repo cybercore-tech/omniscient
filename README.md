@@ -177,28 +177,29 @@ user and every distribution:
 select privileged modules → dashboard pauses → sudo -v → dashboard resumes
 ```
 
-Only the hardware, storage, Btrfs snapshot, kernel-log, and Deep Signals
-modules request elevated access. Modules never prompt on their own: inside
+Only the hardware, storage, Btrfs snapshot, kernel-log, package integrity, and
+Deep Signals modules request elevated access. Modules never prompt on their own: inside
 the elevated HUD child they run directly, and in the dashboard they use
 `sudo -n`, which succeeds only with the credential cached by the single
 `sudo -v` above. A check that cannot elevate says "needs the elevated audit"
 instead of asking again. If authorization is canceled, the dashboard returns without
 starting the audit.
 
-Users with a graphical Polkit agent may opt in from their own shell:
+`OMNISCIENT_AUTH=pkexec` selects one graphical Polkit authorization for the
+headless runners, `--hud`, `--packages` and `--fix`, which re-execute
+themselves once as root; the Omarchy HUD sets it for every action. The
+interactive dashboard cannot re-execute itself, so it always authorizes with
+`sudo -v` in its own terminal and says so when `pkexec` was requested:
 
 ```bash
-export OMNISCIENT_AUTH=pkexec
-omniscient
+OMNISCIENT_AUTH=pkexec omniscient --hud   # one Polkit prompt, headless
+omniscient                                 # dashboard: sudo -v in the terminal
 ```
 
-To force the portable terminal flow:
-
-```bash
-OMNISCIENT_AUTH=sudo omniscient
-```
-
-Any unsupported `OMNISCIENT_AUTH` value falls back to `sudo`. The project
+Any unsupported `OMNISCIENT_AUTH` value falls back to `sudo`. Before
+elevating, the unprivileged parent creates the report and snapshot
+directories itself, so the root child only writes into user-owned
+directories and hands every file back when it finishes. The project
 does not impose an Omarchy or desktop-specific default on other users.
 
 ## ⟦▣⟧ MODULE GRID // WHAT GETS INSPECTED

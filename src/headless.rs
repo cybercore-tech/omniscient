@@ -78,7 +78,7 @@ impl Progress<'_> {
             }
             .to_string(),
             updated_at: Local::now().to_rfc3339(),
-            host: std::env::var("HOSTNAME").unwrap_or_else(|_| "unknown-host".to_string()),
+            host: crate::hostname(),
             selected_count: self.selected.len(),
             completed_count,
             health: Some(HealthSnapshot {

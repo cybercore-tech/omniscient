@@ -237,6 +237,8 @@ pub fn run() -> Result<()> {
         anyhow::bail!("omniscient requires an interactive terminal");
     }
 
+    // Set before any worker thread starts: every module reads the backend.
+    let requested_pkexec = elevation::use_terminal_sudo();
     let palette = UiPalette::detect();
     let mut stdout = io::stdout();
     enable_raw_mode().context("enabling raw terminal mode")?;
@@ -246,7 +248,7 @@ pub fn run() -> Result<()> {
     let mut terminal = Terminal::new(backend).context("creating the terminal renderer")?;
     terminal.clear().context("clearing the terminal renderer")?;
 
-    let result = run_loop(&mut terminal, palette);
+    let result = run_loop(&mut terminal, palette, requested_pkexec);
     disable_raw_mode().ok();
     execute!(
         terminal.backend_mut(),
@@ -258,8 +260,15 @@ pub fn run() -> Result<()> {
     result
 }
 
-fn run_loop(terminal: &mut Terminal<CrosstermBackend<Stdout>>, palette: UiPalette) -> Result<()> {
+fn run_loop(
+    terminal: &mut Terminal<CrosstermBackend<Stdout>>,
+    palette: UiPalette,
+    requested_pkexec: bool,
+) -> Result<()> {
     let mut app = App::new();
+    if requested_pkexec {
+        app.log("AUTH / POLKIT is for the HUD; this terminal authorizes with SUDO");
+    }
     app.log("READY / select modules and press ENTER to begin");
     publish_snapshot(&app);
     let mut receiver: Option<Receiver<WorkerMessage>> = None;
@@ -618,7 +627,7 @@ fn publish_snapshot(app: &App) {
         application: "omniscient",
         state: state.to_string(),
         updated_at: Local::now().to_rfc3339(),
-        host: hostname(),
+        host: crate::hostname(),
         selected_count: app.selected_count(),
         completed_count,
         health,
@@ -892,7 +901,7 @@ fn draw_sidebar(frame: &mut Frame, area: Rect, app: &App, palette: UiPalette) {
     let identity = vec![
         Line::from(Span::styled("HOST / ", Style::default().fg(palette.muted))),
         Line::from(Span::styled(
-            hostname(),
+            crate::hostname(),
             Style::default()
                 .fg(palette.white)
                 .add_modifier(Modifier::BOLD),
@@ -1068,10 +1077,6 @@ fn glyph(palette: UiPalette, unicode: &'static str, ascii: &'static str) -> &'st
     } else {
         ascii
     }
-}
-
-fn hostname() -> String {
-    std::env::var("HOSTNAME").unwrap_or_else(|_| "unknown-host".to_string())
 }
 
 /// Index into an eight-frame animation for a tick counter.

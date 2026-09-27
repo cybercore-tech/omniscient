@@ -588,7 +588,7 @@ Item {
 
   Process {
     id: packageRunner
-    command: ["/usr/bin/env", "OMNISCIENT_AUTH=sudo", root.omniscientBinary, "--packages"]
+    command: ["/usr/bin/env", "OMNISCIENT_AUTH=pkexec", root.omniscientBinary, "--packages"]
     stderr: StdioCollector { id: packageStderr; waitForEnd: true }
     onExited: function(exitCode) { // qmllint disable signal-handler-parameters
       SnapshotReader.refresh()

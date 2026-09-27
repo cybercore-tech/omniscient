@@ -21,8 +21,27 @@ pub enum Backend {
     Pkexec,
 }
 
+/// Set by the interactive dashboard: it cannot re-execute itself under
+/// pkexec, so it always authorizes with `sudo -v` in its own terminal.
+static TERMINAL_SUDO: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+
+/// Force the sudo backend for this process, whatever `OMNISCIENT_AUTH` says.
+/// Returns whether the environment had asked for pkexec.
+pub fn use_terminal_sudo() -> bool {
+    let requested_pkexec = requested_backend() == Backend::Pkexec;
+    TERMINAL_SUDO.store(true, std::sync::atomic::Ordering::Relaxed);
+    requested_pkexec
+}
+
 #[must_use]
 pub fn backend() -> Backend {
+    if TERMINAL_SUDO.load(std::sync::atomic::Ordering::Relaxed) {
+        return Backend::Sudo;
+    }
+    requested_backend()
+}
+
+fn requested_backend() -> Backend {
     match std::env::var("OMNISCIENT_AUTH")
         .unwrap_or_default()
         .to_ascii_lowercase()
@@ -97,10 +116,18 @@ pub fn reexec_graphical() -> Result<bool> {
     validate_owner_id(&gid, "gid")?;
     validate_executable(&executable, &uid)?;
     validate_user_path(&report_dir, &uid, "report directory")?;
-    if let Some(parent) = snapshot_path.parent() {
-        validate_user_path(parent, &uid, "snapshot directory")?;
-    } else {
+    let Some(snapshot_dir) = snapshot_path.parent() else {
         bail!("snapshot path has no parent directory");
+    };
+    validate_user_path(snapshot_dir, &uid, "snapshot directory")?;
+    // Create both directories as the invoking user before elevating, so the
+    // root child only ever writes into user-owned directories.
+    for (dir, label) in [
+        (report_dir.as_path(), "report directory"),
+        (snapshot_dir, "snapshot directory"),
+    ] {
+        fs::create_dir_all(dir).with_context(|| format!("creating {label} {}", dir.display()))?;
+        validate_user_path(dir, &uid, label)?;
     }
 
     let mut command = Command::new(PKEXEC);
@@ -146,15 +173,39 @@ pub fn restore_user_files() -> Result<()> {
     validate_owner_id(&gid, "gid")?;
     let owner = format!("{uid}:{gid}");
     let report_dir = crate::paths::report_root();
-    validate_user_path(&report_dir, &uid, "report directory")?;
+    validate_restorable_dir(&report_dir, &uid, "report directory")?;
     chown_tree(&report_dir, &owner)?;
     let snapshot_path = crate::snapshot::path();
     if let Some(parent) = snapshot_path.parent() {
-        validate_user_path(parent, &uid, "snapshot directory")?;
+        validate_restorable_dir(parent, &uid, "snapshot directory")?;
         chown_path(parent, &owner)?;
     }
     chown_path(&snapshot_path, &owner)?;
     Ok(())
+}
+
+/// Checks a directory whose ownership is about to be handed back. The
+/// directory itself may already be root-owned (the privileged child created
+/// it), so the user-ownership walk covers its parent; the directory must be a
+/// real directory, never a symlink.
+fn validate_restorable_dir(path: &Path, uid: &str, label: &str) -> Result<()> {
+    let parent = path
+        .parent()
+        .with_context(|| format!("{label} has no parent directory"))?;
+    validate_user_path(parent, uid, label)?;
+    match fs::symlink_metadata(path) {
+        Ok(metadata) if metadata.file_type().is_symlink() => {
+            bail!("{label} is a symlink: {}", path.display())
+        }
+        Ok(metadata) if !metadata.is_dir() => {
+            bail!("{label} is not a directory: {}", path.display())
+        }
+        Ok(_) => Ok(()),
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(()),
+        Err(error) => {
+            Err(error).with_context(|| format!("checking ownership of {}", path.display()))
+        }
+    }
 }
 
 fn command_output(program: &str, args: &[&str]) -> Result<String> {
@@ -290,6 +341,43 @@ pub fn label() -> &'static str {
 
 #[cfg(test)]
 mod tests {
+    use std::os::unix::fs::MetadataExt;
+
+    fn scratch(name: &str) -> std::path::PathBuf {
+        let dir = std::env::temp_dir().join(format!(
+            "omniscient-elevation-{name}-{}",
+            std::process::id()
+        ));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).expect("scratch dir");
+        dir
+    }
+
+    #[test]
+    fn restorable_dir_checks_the_parent_and_rejects_symlinks() {
+        let root = scratch("restore");
+        let uid = std::fs::metadata(&root).expect("meta").uid().to_string();
+        let reports = root.join("reports");
+        assert!(
+            super::validate_restorable_dir(&reports, &uid, "reports").is_ok(),
+            "a directory not created yet is fine"
+        );
+        std::fs::create_dir(&reports).expect("reports");
+        assert!(super::validate_restorable_dir(&reports, &uid, "reports").is_ok());
+        let link = root.join("link");
+        std::os::unix::fs::symlink(&reports, &link).expect("symlink");
+        assert!(super::validate_restorable_dir(&link, &uid, "reports").is_err());
+        let file = root.join("file");
+        std::fs::write(&file, "x").expect("file");
+        assert!(super::validate_restorable_dir(&file, &uid, "reports").is_err());
+        let other_uid = (uid.parse::<u32>().expect("uid") + 1).to_string();
+        assert!(
+            super::validate_restorable_dir(&reports, &other_uid, "reports").is_err(),
+            "the parent must belong to the invoking user"
+        );
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
     #[test]
     fn elevation_from_a_module_never_prompts() {
         if std::env::var_os("OMNISCIENT_AUTH").is_some() {

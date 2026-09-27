@@ -721,6 +721,11 @@ impl AuditModule for PackageIntegrity {
     fn optional_tools(&self) -> &'static [&'static str] {
         self.tools()
     }
+    /// `pacman -Qkk` must read root-only files; unprivileged, it reports
+    /// them as unreadable rather than verifying them.
+    fn requires_sudo(&self) -> bool {
+        true
+    }
     fn run(&self, dir: &Path) -> Result<()> {
         write_report(
             dir,
@@ -1165,8 +1170,10 @@ impl AuditModule for Omarchy {
 /// hide.
 fn package_file_integrity() -> String {
     let Some(list) = command_stdout("pacman", &["-Qq"]) else {
-        return capture("pacman", &["-Qkk"]);
+        return capture_privileged("pacman", &["-Qkk"]);
     };
+    let sudo_pacman = cached_sudo_pacman();
+    let elevated = crate::elevation::is_privileged() || sudo_pacman.is_some();
     let packages = list.lines().map(str::to_owned).collect::<Vec<_>>();
     if packages.is_empty() {
         return "_pacman reported no installed packages._\n".to_owned();
@@ -1181,10 +1188,18 @@ fn package_file_integrity() -> String {
         let handles = packages
             .chunks(per_chunk)
             .map(|chunk| {
+                let sudo_pacman = sudo_pacman.as_deref();
                 scope.spawn(move || {
                     let mut args = vec!["-Qkk"];
                     args.extend(chunk.iter().map(String::as_str));
-                    capture_with("pacman", &args, limits)
+                    match sudo_pacman {
+                        Some(pacman) => {
+                            let mut elevated_args = vec!["-n", pacman];
+                            elevated_args.extend(args);
+                            capture_with(crate::elevation::program(), &elevated_args, limits)
+                        }
+                        None => capture_with("pacman", &args, limits),
+                    }
                 })
             })
             .collect::<Vec<_>>();
@@ -1202,11 +1217,55 @@ fn package_file_integrity() -> String {
         packages.len(),
         results.len()
     );
-    for result in results {
-        out.push_str(result.trim_end());
-        out.push('\n');
+    let body = results
+        .iter()
+        .map(|result| result.trim_end())
+        .collect::<Vec<_>>()
+        .join("\n");
+    if !elevated {
+        let _ = writeln!(
+            out,
+            "_Ran without root: {} warning(s) below are files pacman could not read \
+             (Permission denied / failed to calculate SHA256 checksum), not integrity \
+             failures. Run the package scan elevated for a complete check._\n",
+            unreadable_warnings(&body)
+        );
     }
+    out.push_str(&body);
+    out.push('\n');
     out
+}
+
+/// The resolved pacman path when `sudo -n` can run it without prompting:
+/// a credential cached by the dashboard's `sudo -v`. `None` when already
+/// root, under pkexec (which never runs per command) or without a cache.
+fn cached_sudo_pacman() -> Option<String> {
+    if crate::elevation::is_privileged() {
+        return None;
+    }
+    let pacman = crate::pathcheck::resolve("pacman")?
+        .to_string_lossy()
+        .into_owned();
+    let probe = crate::elevation::non_interactive_args(&pacman, &["-V"])?;
+    let output = crate::capture::run(
+        Path::new(crate::elevation::program()),
+        &probe,
+        crate::capture::Limits::default(),
+    )
+    .ok()?;
+    output.success().then_some(pacman)
+}
+
+/// `pacman -Qkk` warnings that only mean "could not read as this user".
+fn unreadable_warnings(report: &str) -> usize {
+    report
+        .lines()
+        .filter(|line| {
+            line.starts_with("warning:")
+                && (line.ends_with("(Permission denied)")
+                    || line.ends_with("(failed to calculate SHA256 checksum)"))
+        })
+        .count()
 }
 
 /// Checks most audit tools skip: see [`crate::signals`].
@@ -1314,8 +1373,26 @@ mod tests {
 
         assert_eq!(
             privileged,
-            HashSet::from(["hardware", "disks", "snapshots", "logs", "signals"])
+            HashSet::from([
+                "hardware",
+                "disks",
+                "snapshots",
+                "logs",
+                "packages",
+                "signals"
+            ])
         );
+    }
+
+    #[test]
+    fn unreadable_package_warnings_are_counted_apart_from_real_ones() {
+        let report = "\
+warning: bind: /var/named/localhost.zone (failed to calculate SHA256 checksum)
+warning: cups: /var/spool/cups/tmp (Permission denied)
+warning: libvirt: /etc/libvirt/secrets (Permissions mismatch)
+warning: ufw: /etc/ufw/user.rules (SHA256 checksum mismatch)
+cups: 947 total files, 11 altered files";
+        assert_eq!(super::unreadable_warnings(report), 2);
     }
 
     #[test]
