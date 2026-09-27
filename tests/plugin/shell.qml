@@ -27,6 +27,8 @@ ShellRoot {
   property int applyBefore: 0
   property int readsBefore: 0
   property int pollsBefore: 0
+  property int rowsBefore: 0
+  property int tailsBefore: 0
   // Longest tolerated UI-thread stall. Rendering is virtualized, so this
   // holds for any report size; before virtualization a dense 512 KiB report
   // stalled this (slow, i3-8130U) machine for ~2.7 s.
@@ -47,6 +49,18 @@ ShellRoot {
   function install(name) {
     installer.command = ["/usr/bin/cp", "--", harness.fixtures + "/" + name, harness.runtimeSnapshot + ".tmp"]
     installer.running = true
+  }
+
+  function argsLog() {
+    return argsReader.text()
+  }
+
+  function lastArgs() {
+    var lines = harness.argsLog().trim().split("\n")
+    for (var i = lines.length - 1; i >= 0; i--) {
+      if (lines[i].indexOf("--list-boots") < 0 && lines[i].indexOf("--output-fields") < 0) return lines[i]
+    }
+    return ""
   }
 
   function report(name) {
@@ -274,6 +288,46 @@ ShellRoot {
     { name: "fix reported", wait: 200, run: function() {
       harness.check(harness.panel.fixMessage === "fake audit failed", "a failed fix reports its error", harness.panel.fixMessage)
     } },
+    { name: "journal tab", wait: 8000, until: function() { return harness.panel.journal.rowCount > 0 && harness.panel.journal.offenders.length > 0 }, run: function() {
+      harness.panel.tab = "journal"
+    } },
+    { name: "journal loaded", wait: 300, run: function() {
+      var j = harness.panel.journal
+      harness.check(j.rowCount === 3, "five UFW lines collapse into one row (plus two failures)", j.rowCount)
+      harness.check(j.offenders[0].source === "cyberdeck-diag-deck.service" && j.offenders[0].count === 3, "top offender ranked", JSON.stringify(j.offenders[0]))
+      harness.check(j.boots.length === 2, "boots listed", j.boots.length)
+      harness.check(harness.lastArgs().indexOf("-p 4 -b 0") >= 0, "default is warnings of the current boot", harness.lastArgs())
+      j.priority = 3
+    } },
+    { name: "journal priority", wait: 2500, run: function() {} },
+    { name: "journal priority applied", wait: 200, run: function() {
+      harness.check(harness.argsLog().indexOf("-p 3 -b 0") >= 0, "priority chip becomes -p 3")
+      harness.panel.journal.unit = "cyberdeck-diag-deck.service"
+    } },
+    { name: "journal unit", wait: 2500, run: function() {} },
+    { name: "journal unit applied", wait: 200, run: function() {
+      harness.check(harness.argsLog().indexOf("_SYSTEMD_UNIT=cyberdeck-diag-deck.service + _SYSTEMD_USER_UNIT=cyberdeck-diag-deck.service") >= 0,
+        "unit filter becomes journal matches")
+      harness.panel.journal.grep = "fail; rm -rf / $(x)"
+    } },
+    { name: "journal grep", wait: 2500, run: function() {} },
+    { name: "journal grep applied", wait: 200, run: function() {
+      harness.check(harness.argsLog().indexOf("-g fail; rm -rf / $(x)") >= 0, "a hostile search is passed as one argument, never run")
+      harness.rowsBefore = harness.panel.journal.rowCount
+      harness.panel.journal.follow = true
+    } },
+    { name: "journal follow", wait: 5000, until: function() { return harness.panel.journal.tails > 0 && harness.panel.journal.rowCount > harness.rowsBefore }, run: function() {} },
+    { name: "journal followed", wait: 200, run: function() {
+      harness.check(harness.argsLog().indexOf("--after-cursor s=fixture;i=11") >= 0, "the tail continues from the last cursor")
+      harness.check(harness.panel.journal.rowCount > harness.rowsBefore, "tailed lines are appended", harness.panel.journal.rowCount)
+      harness.panel.journal.follow = false
+      harness.tailsBefore = harness.panel.journal.tails
+      harness.panel.tab = "audit"
+    } },
+    { name: "journal idle", wait: 4500, run: function() {} },
+    { name: "journal stopped", wait: 200, run: function() {
+      harness.check(harness.panel.journal.tails === harness.tailsBefore, "no journal reads off the tab", harness.panel.journal.tails - harness.tailsBefore)
+    } },
     { name: "polling stops", wait: 5000, run: function() {} },
     { name: "polling stopped", wait: 500, run: function() {
       harness.check(harness.panel.sensorPolls === harness.pollsBefore, "leaving the sensor tabs stops polling", harness.panel.sensorPolls - harness.pollsBefore)
@@ -290,6 +344,14 @@ ShellRoot {
       if (harness.panel !== null) harness.panel.close()
     } }
   ]
+
+  FileView {
+    id: argsReader
+    path: harness.fixtures + "/journalctl-args.log"
+    watchChanges: true
+    printErrors: false
+    onFileChanged: argsReader.reload()
+  }
 
   Loader {
     id: panelLoader

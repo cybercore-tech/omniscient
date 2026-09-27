@@ -3,7 +3,7 @@
 ![gate](https://img.shields.io/badge/gate-scripts%2Fgate.sh%20full-52e8ff)
 ![clippy](https://img.shields.io/badge/clippy-pedantic%20denied-a56bff)
 ![qmllint](https://img.shields.io/badge/qmllint-all%20categories%2C%200%20warnings-c8e967)
-![harness](https://img.shields.io/badge/plugin%20harness-73%20checks-ffb454)
+![harness](https://img.shields.io/badge/plugin%20harness-83%20checks-ffb454)
 
 Omniscient has two halves that fail in different ways: a Rust audit engine
 that runs system commands, and a Quickshell plugin that runs **inside the
@@ -64,7 +64,7 @@ inside a systemd scope capped at 1 GiB with no swap. The live desktop shell is
 never touched. `tests/plugin/make-fixtures.py` generates synthetic fixtures;
 no real audit data is used or committed.
 
-The harness (`tests/plugin/shell.qml`) checks, among 73 assertions:
+The harness (`tests/plugin/shell.qml`) checks, among 83 assertions:
 
 - an unchanged snapshot causes **no** reassignment (the old reader replaced
   every list every second, rebuilding every delegate);
@@ -91,6 +91,11 @@ The harness (`tests/plugin/shell.qml`) checks, among 73 assertions:
   drive, profile and ASUS values are checked, bad and oversized readings are
   refused while the last good one is kept, polling happens only on a sensor
   tab and stops when leaving it;
+- the JOURNAL tab against a fake `journalctl` on the harness PATH that logs
+  its argv: collapsed rows, ranked offenders, boots, and that each chip,
+  unit click and search becomes exactly the right arguments (a hostile
+  search stays one inert argument), the tail continues from the cursor, and
+  nothing runs off the tab;
 - 20 rapid atomic rewrites end on the last one written;
 - the repair confirmation names the requested fix (by id, not the fix-center
   selection), and a failing fix reports its error;

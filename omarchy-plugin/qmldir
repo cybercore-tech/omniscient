@@ -6,3 +6,4 @@ HudMeter 1.0 HudMeter.qml
 SensorsView 1.0 SensorsView.qml
 DrivesView 1.0 DrivesView.qml
 PlatformView 1.0 PlatformView.qml
+JournalView 1.0 JournalView.qml

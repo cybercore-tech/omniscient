@@ -292,6 +292,28 @@ NVMe and ASUS layouts are tested on hardware without them.
 omniscient --sensors | jq .cpu
 ```
 
+## ⟦☰⟧ JOURNAL // WHY IT BROKE
+
+The **JOURNAL** tab (`omniscient --journal`) shows the journal the user can
+read, filtered by priority (EMERG…DEBUG), boot (with start dates), time range
+(this boot, today, 1 hour, 15 minutes), unit and a search, with:
+
+- repeated lines collapsed into one row with a count (lines that differ only
+  in numbers, ports, MAC octets or ids count as repeats), keeping the newest;
+- **top offenders**: warning-or-worse lines per unit over the newest 50,000
+  of the boot, click to filter;
+- **FOLLOW**: a live tail every two seconds from the last journal cursor;
+- click a line for its PID, boot and collapse count.
+
+Every filter is validated again by the binary before it becomes a
+`journalctl` argument (argv only, no shell): priorities 0-7, boots `0`, `-N`
+or a boot id, unit names, four time ranges, a 120-character search without
+control characters, and journal cursors. Nothing runs off the tab.
+
+```bash
+omniscient --journal --priority 3 --boot -1 --unit sshd.service --offenders
+```
+
 ## ⟦✦⟧ HEALTH // SIGNAL, NOT JUST INVENTORY
 
 The health score starts at `100` and is adjusted using real signals:
@@ -372,6 +394,7 @@ src/signals.rs     Deep Signals: collectors plus pure, tested assessors
 src/changes.rs     CHANGES.md: diff against the previous audit
 src/history.rs     bounded trend files (battery, shell memory)
 src/sensors.rs     --sensors: live read-only hardware readings for the HUD tabs
+src/journal.rs     --journal: validated, collapsed journal views and offenders
 src/elevation.rs   sudo default and pkexec opt-in backend selection
 src/health.rs      health scoring from system signals
 src/paths.rs       XDG report-path resolution and per-user override
@@ -406,7 +429,7 @@ Run the local quality gates before publishing a change:
 test target, doctests, rustdoc with warnings fatal, shell syntax checks, the
 static security gate, and the plugin gate. The plugin gate lints every QML
 file with Qt 6 `qmllint` at the strictest setting, then loads the real plugin
-into a nested, memory-capped compositor and drives it through 73 checks,
+into a nested, memory-capped compositor and drives it through 83 checks,
 including a 75 MB report and a memory soak. It needs an Omarchy session, so CI
 skips it (`OMNISCIENT_SKIP_PLUGIN_GATE=1`); run it locally before pushing.
 See [docs/TESTING.md](docs/TESTING.md).

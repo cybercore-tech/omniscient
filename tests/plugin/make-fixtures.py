@@ -109,6 +109,42 @@ def write_sysroot(root):
         write(os.path.join(root, path), contents + ("" if contents.endswith("\n") else "\n"))
 
 
+def journal_line(n, priority, unit, message):
+    return json.dumps({
+        "__CURSOR": f"s=fixture;i={n}",
+        "__REALTIME_TIMESTAMP": str(1790400000000000 + n * 1000000),
+        "PRIORITY": str(priority),
+        "_SYSTEMD_UNIT": unit,
+        "_PID": str(1000 + n),
+        "_BOOT_ID": "a3f0621128b448e683f87135bb9a47c9",
+        "MESSAGE": message,
+    })
+
+
+def write_fake_journalctl(bindir, root):
+    """A journalctl stand-in: logs its argv, answers from fixtures."""
+    lines = [journal_line(n, 4, "kernel", f"[UFW BLOCK] IN=wlp2s0 SRC=10.0.0.{n} DPT={n}") for n in range(1, 6)]
+    lines += [journal_line(10, 3, "cyberdeck-diag-deck.service", "Main process exited, status=1/FAILURE"),
+              journal_line(11, 3, "sigilward-check.service", "integrity drift: 3 files changed")]
+    boots = json.dumps([{"index": 0, "boot_id": "a3f0621128b448e683f87135bb9a47c9", "first_entry": 1790400000000000},
+                        {"index": -1, "boot_id": "81b105eb24514bb898a5144711fe717e", "first_entry": 1790300000000000}])
+    write(os.path.join(root, "journal-entries.json"), "\n".join(lines) + "\n")
+    write(os.path.join(root, "journal-tail.json"), journal_line(20, 3, "cyberdeck-diag-deck.service", "restarting again") + "\n")
+    write(os.path.join(root, "journal-boots.json"), boots + "\n")
+    offenders = "\n".join([json.dumps({"_SYSTEMD_UNIT": "cyberdeck-diag-deck.service"})] * 3 + [json.dumps({"_COMM": "kworker"})])
+    write(os.path.join(root, "journal-offenders.json"), offenders + "\n")
+    script = os.path.join(bindir, "journalctl")
+    write(script, "#!/bin/sh\n"
+                  f"printf '%s\\n' \"$*\" >> '{root}/journalctl-args.log'\n"
+                  "case \" $* \" in\n"
+                  f"  *' --list-boots '*) exec cat '{root}/journal-boots.json' ;;\n"
+                  f"  *'--output-fields='*) exec cat '{root}/journal-offenders.json' ;;\n"
+                  f"  *' --after-cursor '*) exec cat '{root}/journal-tail.json' ;;\n"
+                  f"  *) exec cat '{root}/journal-entries.json' ;;\n"
+                  "esac\n")
+    os.chmod(script, os.stat(script).st_mode | stat.S_IXUSR)
+
+
 def main():
     root = os.path.abspath(sys.argv[1])
     audit = os.path.join(root, "state", "omniscient", "audit")
@@ -161,9 +197,14 @@ def main():
     # the sensor tabs are tested end to end.
     real = os.path.abspath(sys.argv[2]) if len(sys.argv) > 2 else "/nonexistent"
     fake = os.path.join(root, "home", ".local", "bin", "omniscient")
+    bindir = os.path.join(root, "bin")
+    write_fake_journalctl(bindir, root)
     write(fake, "#!/bin/sh\n"
                 "if [ \"$1\" = \"--sensors\" ]; then\n"
                 f"  OMNISCIENT_SYSFS_ROOT='{sysroot}' exec '{real}' --sensors\n"
+                "fi\n"
+                "if [ \"$1\" = \"--journal\" ]; then\n"
+                f"  PATH='{bindir}:/usr/bin:/bin' exec '{real}' \"$@\"\n"
                 "fi\n"
                 "echo 'fake audit failed' >&2\nexit 3\n")
     os.chmod(fake, os.stat(fake).st_mode | stat.S_IXUSR)

@@ -48,6 +48,17 @@ bounded independently:
   capped, an unchanged snapshot causes no UI updates, and reports are shown
   through virtualized list views that render only the on-screen part.
 
+## Journal
+
+`omniscient --journal` runs unprivileged and shows only what the user's
+journal access allows. Filters come from HUD text and chips, so the binary
+re-validates each one against a strict grammar (priority 0-7; boot `0`, `-N`
+or 32-hex id; unit `[A-Za-z0-9@._:\-]`; four time ranges; search ≤120
+characters without control characters; cursor `[A-Za-z0-9=;_-]`) and passes
+it to `journalctl` as a separate argument, never through a shell. Output is
+bounded (≤500 entries per view, messages ≤2,000 characters, JSON ≤8 MiB; the
+offender scan reads at most 50,000 lines or 10 s).
+
 ## Sensors
 
 `omniscient --sensors` only reads `/sys` and `/proc` (under

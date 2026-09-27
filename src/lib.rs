@@ -6,6 +6,7 @@ pub mod headless;
 pub mod health;
 pub mod history;
 pub mod hud;
+pub mod journal;
 pub mod modules;
 pub mod palette;
 pub mod pathcheck;

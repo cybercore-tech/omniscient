@@ -6,6 +6,10 @@ All notable changes to Omniscient are documented here.
 
 ### Added
 
+- **JOURNAL** tab (`omniscient --journal`, `src/journal.rs`): priority, boot,
+  time-range, unit and search filters; repeats collapsed by message shape;
+  top offenders per boot; live FOLLOW tail by cursor; expandable lines.
+  Filters are re-validated by the binary and passed as argv only.
 - DRIVES: **ENABLE LIVE SATA TEMPERATURES** runs the new allowlisted fix
   `enable-sensor:drivetemp` (confirm, one authorization, fix report).
 - PLATFORM: power profile from power-profiles-daemon when ACPI has none, CPU

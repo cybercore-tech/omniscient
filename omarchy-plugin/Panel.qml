@@ -58,17 +58,19 @@ Item {
   // read-only hardware readings from `omniscient --sensors`, polled only
   // while the panel is open on one of them.
   property string tab: "audit"
+  readonly property alias journal: journalView
   readonly property var tabs: [
     { id: "audit", label: "AUDIT" },
     { id: "sensors", label: "SENSORS" },
     { id: "drives", label: "DRIVES" },
-    { id: "platform", label: "PLATFORM" }
+    { id: "platform", label: "PLATFORM" },
+    { id: "journal", label: "JOURNAL" }
   ]
   readonly property int maxSensorBytes: 600000
   property var sensors: null
   property string sensorError: ""
   property int sensorPolls: 0
-  readonly property bool sensorsWanted: root.opened && root.tab !== "audit"
+  readonly property bool sensorsWanted: root.opened && ["sensors", "drives", "platform"].indexOf(root.tab) >= 0
 
   function acceptSensors(raw) {
     var text = String(raw || "").trim()
@@ -792,7 +794,7 @@ Item {
           }
           Item { Layout.fillWidth: true }
           Text {
-            visible: root.tab !== "audit"
+            visible: root.sensorsWanted
             text: root.sensorError.length ? root.sensorError : "LIVE / READ-ONLY / EVERY 2 S"
             color: root.sensorError.length ? "#ff667d" : "#8290a4"
             font.family: "monospace"
@@ -1361,6 +1363,15 @@ Item {
           Layout.fillWidth: true
           Layout.fillHeight: true
           reading: root.sensors
+        }
+
+        JournalView {
+          id: journalView
+          visible: root.tab === "journal"
+          Layout.fillWidth: true
+          Layout.fillHeight: true
+          binary: root.omniscientBinary
+          active: root.opened && root.tab === "journal"
         }
       }
 
