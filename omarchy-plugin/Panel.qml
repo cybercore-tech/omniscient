@@ -710,6 +710,7 @@ Item {
       font.pixelSize: root.fontBody
       wrapMode: Text.Wrap
       textFormat: Text.RichText
+      linkColor: "#52e8ff"
       onLinkActivated: function(link) { root.activateReportLink(link) }
       Component.onCompleted: root.liveChunkDelegates++
       Component.onDestruction: root.liveChunkDelegates--
@@ -1202,6 +1203,7 @@ Item {
                     Text {
                       text: "<a href='" + String(suggestionRow.modelData.man_url || "") + "'>MAN</a>  <a href='" + String(suggestionRow.modelData.docs_url || "") + "'>DOCS</a>"
                       textFormat: Text.RichText
+                      linkColor: "#52e8ff"
                       color: "#52e8ff"
                       font.family: "monospace"
                       font.pixelSize: root.fontMicro

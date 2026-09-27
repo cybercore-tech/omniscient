@@ -389,7 +389,13 @@ pub fn utilization(before: &str, after: &str) -> Option<f64> {
     let (total_a, idle_a) = parse(before)?;
     let (total_b, idle_b) = parse(after)?;
     let total = total_b - total_a;
-    (total > 0.0).then(|| ((1.0 - (idle_b - idle_a) / total) * 1000.0).round() / 10.0)
+    let idle = idle_b - idle_a;
+    // Counters only grow; a delta that shrinks (CPU hotplug, a counter
+    // reset) or idles more than it ran is not a measurement.
+    if total <= 0.0 || idle < 0.0 || idle > total {
+        return None;
+    }
+    Some(((1.0 - idle / total) * 1000.0).round() / 10.0)
 }
 
 fn cpu_identity(cpuinfo: &str) -> (String, String) {
@@ -1105,6 +1111,12 @@ mod tests {
         assert_eq!(utilization(a, b), Some(25.0));
         assert_eq!(utilization(a, a), None);
         assert_eq!(utilization("garbage", b), None);
+        // Counters that go backwards are rejected, never a negative load.
+        assert_eq!(utilization(b, a), None);
+        let shrinking_idle = "cpu  300 0 300 1200 100 0 0 0 0 0\n";
+        assert_eq!(utilization(b, shrinking_idle), None);
+        let idle_only = "cpu  100 0 100 900 100 0 0 0 0 0\n";
+        assert_eq!(utilization(a, idle_only), Some(0.0));
     }
 
     #[test]

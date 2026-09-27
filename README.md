@@ -25,33 +25,55 @@ and capability matrix in one view.*
 
 ## ⟦▥⟧ VISUAL WALKTHROUGH // THE OMNISCIENT SURFACE
 
-These sanitized captures show the complete operator flow: launch a scan,
-inspect device output, review repair guidance, and read the evidence in place.
-Machine-specific usernames, hostnames, network addresses, hardware addresses,
-and filesystem identifiers have been removed from the public previews.
+Rendered by `scripts/showcase.sh` from synthetic data (`scripts/showcase.py`):
+host `cyberdeck`, user `operator`, documentation-range addresses and a Ryzen 9
+/ Radeon / ROG Zephyrus profile, so no real machine's names, paths or
+addresses appear. Regenerate them after UI changes with one command.
 
 <table>
   <tr>
-    <td width="50%"><img src="assets/screenshots/omniscient-01-system-audit.png" alt="Omniscient system audit overview"></td>
-    <td width="50%"><img src="assets/screenshots/omniscient-02-fix-center.png" alt="Omniscient Fix Center repair controls"></td>
+    <td colspan="2" align="center"><img src="assets/screenshots/omniscient-01-audit-overview.png" alt="Audit overview: health score, the hourly watch's new findings and the 18-module registry"></td>
   </tr>
   <tr>
-    <td align="center"><sub>SYSTEM AUDIT / MODULE REGISTRY</sub></td>
-    <td align="center"><sub>FIX CENTER / MANUAL OR AUTHORIZED REPAIR</sub></td>
+    <td colspan="2" align="center"><sub><b>AUDIT / HEALTH, WATCH, MODULES</b></sub></td>
   </tr>
   <tr>
-    <td width="50%"><img src="assets/screenshots/omniscient-03-suggestions-report.png" alt="Omniscient fix suggestions report viewer"></td>
-    <td width="50%"><img src="assets/screenshots/omniscient-04-storage-report.png" alt="Omniscient sanitized storage report"></td>
+    <td colspan="2" align="center"><img src="assets/screenshots/omniscient-02-fix-center.png" alt="Fix center with checklist, proposed command and repair mode"></td>
   </tr>
   <tr>
-    <td align="center"><sub>REPORT READER / FIX SUGGESTIONS</sub></td>
-    <td align="center"><sub>REPORT READER / STORAGE MATRIX</sub></td>
+    <td colspan="2" align="center"><sub><b>FIX CENTER / GUIDED OR AUTHORIZED REPAIR</b></sub></td>
   </tr>
   <tr>
-    <td colspan="2" align="center"><img src="assets/screenshots/omniscient-05-package-integrity.png" alt="Omniscient package integrity report"></td>
+    <td width="50%"><img src="assets/screenshots/omniscient-03-deep-signals.png" alt="Deep Signals report: restart loops, reboot needed, crash trends"></td>
+    <td width="50%"><img src="assets/screenshots/omniscient-04-changes.png" alt="Changes since the last audit: new, changed and resolved findings"></td>
   </tr>
   <tr>
-    <td colspan="2" align="center"><sub>REPORT READER / PACKAGE INTEGRITY</sub></td>
+    <td align="center"><sub><b>DEEP SIGNALS / WHAT OTHER TOOLS MISS</b></sub></td>
+    <td align="center"><sub><b>CHANGES / SINCE THE LAST AUDIT</b></sub></td>
+  </tr>
+  <tr>
+    <td width="50%"><img src="assets/screenshots/omniscient-05-sensors.png" alt="Live sensors with two-minute sparklines"></td>
+    <td width="50%"><img src="assets/screenshots/omniscient-08-journal.png" alt="Journal viewer with collapsed repeats and top offenders"></td>
+  </tr>
+  <tr>
+    <td align="center"><sub><b>SENSORS / LIVE CPU, GPU, FANS</b></sub></td>
+    <td align="center"><sub><b>JOURNAL / FILTERED, COLLAPSED, TOP OFFENDERS</b></sub></td>
+  </tr>
+  <tr>
+    <td width="50%"><img src="assets/screenshots/omniscient-09-trends.png" alt="Thirty-day trends: health, alerts, CPU temperature, shell memory, battery"></td>
+    <td width="50%"><img src="assets/screenshots/omniscient-06-drives.png" alt="Drive temperatures for NVMe and SATA"></td>
+  </tr>
+  <tr>
+    <td align="center"><sub><b>TRENDS / 30 DAYS</b></sub></td>
+    <td align="center"><sub><b>DRIVES / EVERY DRIVE'S TEMPERATURE</b></sub></td>
+  </tr>
+  <tr>
+    <td width="50%"><img src="assets/screenshots/omniscient-07-platform.png" alt="Platform: power profile, ASUS state, control tools"></td>
+    <td width="50%"><img src="assets/screenshots/omniscient-10-package-integrity.png" alt="Package integrity with repository categories"></td>
+  </tr>
+  <tr>
+    <td align="center"><sub><b>PLATFORM / PROFILE, ASUS, TOOLS</b></sub></td>
+    <td align="center"><sub><b>PACKAGES / CATEGORIES + INTEGRITY</b></sub></td>
   </tr>
 </table>
 
