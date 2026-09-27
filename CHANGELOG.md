@@ -55,6 +55,22 @@ All notable changes to Omniscient are documented here.
 
 ### Fixed
 
+- HUD audits, fixes and package scans left the report and snapshot
+  directories root-owned when the root child created them: the ownership
+  hand-back re-checked the new root-owned directory, refused, and never ran
+  `chown`, after which every later HUD run, watch and trend write failed. The
+  parent now creates both directories before elevating, and the hand-back
+  validates the directory's parent.
+- The dashboard with `OMNISCIENT_AUTH=pkexec` skipped authorization yet
+  logged "authorization completed", so privileged sections were silently
+  unprivileged. It now always authorizes with `sudo -v` in its terminal.
+- Package integrity ran `pacman -Qkk` unprivileged even when elevated, so
+  unreadable root-only files appeared as altered. It now runs as root (HUD
+  `PACKAGE SCAN` uses Polkit; the dashboard asks for `sudo -v`), and an
+  unprivileged run says so and counts the unreadable-only warnings.
+- The host showed as `unknown-host` wherever `$HOSTNAME` is not exported
+  (zsh, desktop launches); it is now read from the kernel.
+
 - `--sensors`, `--journal` and fix output crashed (SIGABRT with a core dump)
   when the HUD closed the reader early: `println!` panics on a broken pipe
   under `panic = "abort"`. Output now goes through `emit`, which treats a

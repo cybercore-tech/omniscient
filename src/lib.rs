@@ -49,6 +49,20 @@ pub fn emit_to(out: &mut impl std::io::Write, text: &str) -> std::io::Result<()>
     }
 }
 
+/// This machine's hostname. `$HOSTNAME` is a shell variable (bash sets it
+/// without exporting it, zsh not at all), so desktop launches never see it;
+/// the kernel's value is authoritative.
+#[must_use]
+pub fn hostname() -> String {
+    ["/proc/sys/kernel/hostname", "/etc/hostname"]
+        .iter()
+        .filter_map(|path| std::fs::read_to_string(path).ok())
+        .map(|text| text.trim().to_owned())
+        .chain(std::env::var("HOSTNAME").ok())
+        .find(|name| !name.is_empty())
+        .unwrap_or_else(|| "unknown-host".to_owned())
+}
+
 #[cfg(test)]
 mod emit_tests {
     struct Closed;

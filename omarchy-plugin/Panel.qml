@@ -588,7 +588,7 @@ Item {
 
   Process {
     id: packageRunner
-    command: ["/usr/bin/env", "OMNISCIENT_AUTH=sudo", root.omniscientBinary, "--packages"]
+    command: ["/usr/bin/env", "OMNISCIENT_AUTH=pkexec", root.omniscientBinary, "--packages"]
     stderr: StdioCollector { id: packageStderr; waitForEnd: true }
     onExited: function(exitCode) { // qmllint disable signal-handler-parameters
       SnapshotReader.refresh()
@@ -721,26 +721,26 @@ Item {
   // the Wayland implementation is supplied at runtime, so the linter cannot
   // see that it is creatable. The same applies to QProcess::ExitStatus in
   // Process.exited, which is why those handlers carry a line-level directive.
+  // The window is only as large as the card and, with no anchors, the
+  // compositor centres it: everything around the HUD stays visible and
+  // clickable, and the keyboard is shared on demand. Close with ×, Escape or
+  // the toggle.
   PanelWindow { // qmllint disable uncreatable-type
     id: panelWindow
     visible: root.opened
-    anchors { top: true; bottom: true; left: true; right: true }
+    implicitWidth: Math.min(1240, (panelWindow.screen ? panelWindow.screen.width : 1268) - 28)
+    implicitHeight: Math.min(780, (panelWindow.screen ? panelWindow.screen.height : 808) - 28)
     color: "transparent"
     WlrLayershell.namespace: "io-github-cybercore-tech-omniscient"
     WlrLayershell.layer: WlrLayer.Overlay
-    WlrLayershell.keyboardFocus: root.opened ? WlrKeyboardFocus.Exclusive : WlrKeyboardFocus.None
+    WlrLayershell.keyboardFocus: root.opened ? WlrKeyboardFocus.OnDemand : WlrKeyboardFocus.None
     exclusionMode: ExclusionMode.Ignore
-
-    MouseArea {
-      anchors.fill: parent
-      onClicked: root.close()
-    }
 
     Rectangle {
       id: card
-      width: Math.min(1240, parent.width - 28)
-      height: Math.min(780, parent.height - 28)
-      anchors.centerIn: parent
+      anchors.fill: parent
+      focus: true
+      Keys.onEscapePressed: root.close()
       radius: 7
       color: "#080b12"
       border.width: 1
