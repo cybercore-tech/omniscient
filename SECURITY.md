@@ -48,6 +48,19 @@ bounded independently:
   capped, an unchanged snapshot causes no UI updates, and reports are shown
   through virtualized list views that render only the on-screen part.
 
+## Watch
+
+`omniscient --watch` is unprivileged by construction: module elevation is
+`sudo -n` only, and the shipped user unit adds `NoNewPrivileges=yes`, so a
+timer can never raise a password prompt or gain privileges. It writes
+`watch.json` next to the HUD snapshot and `watch-state.json` (finding keys)
+in the report root, and sends notifications through
+`omarchy-notification-send` (or plain `notify-send`). A notification's
+click runs `omarchy-shell shell summon <plugin> <json>`; the panel honours
+only a known tab, a unit matching the journal unit grammar and a priority
+0-7 from that payload, ignores anything else, and ignores payloads over
+4 KiB or that are not JSON.
+
 ## Journal
 
 `omniscient --journal` runs unprivileged and shows only what the user's

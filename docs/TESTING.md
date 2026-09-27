@@ -3,7 +3,7 @@
 ![gate](https://img.shields.io/badge/gate-scripts%2Fgate.sh%20full-52e8ff)
 ![clippy](https://img.shields.io/badge/clippy-pedantic%20denied-a56bff)
 ![qmllint](https://img.shields.io/badge/qmllint-all%20categories%2C%200%20warnings-c8e967)
-![harness](https://img.shields.io/badge/plugin%20harness-83%20checks-ffb454)
+![harness](https://img.shields.io/badge/plugin%20harness-93%20checks-ffb454)
 
 Omniscient has two halves that fail in different ways: a Rust audit engine
 that runs system commands, and a Quickshell plugin that runs **inside the
@@ -64,7 +64,7 @@ inside a systemd scope capped at 1 GiB with no swap. The live desktop shell is
 never touched. `tests/plugin/make-fixtures.py` generates synthetic fixtures;
 no real audit data is used or committed.
 
-The harness (`tests/plugin/shell.qml`) checks, among 83 assertions:
+The harness (`tests/plugin/shell.qml`) checks, among 93 assertions:
 
 - an unchanged snapshot causes **no** reassignment (the old reader replaced
   every list every second, rebuilding every delegate);
@@ -96,6 +96,10 @@ The harness (`tests/plugin/shell.qml`) checks, among 83 assertions:
   unit click and search becomes exactly the right arguments (a hostile
   search stays one inert argument), the tail continues from the cursor, and
   nothing runs off the tab;
+- watch mode: `watch.json` read by `WatchReader`; the real `BarWidget.qml`
+  loaded with its badge count, status colour and tooltip checked; panel
+  payloads (a notification opening the JOURNAL on a unit) honoured, and
+  hostile, malformed and oversized payloads ignored;
 - 20 rapid atomic rewrites end on the last one written;
 - the repair confirmation names the requested fix (by id, not the fix-center
   selection), and a failing fix reports its error;
@@ -110,6 +114,14 @@ The script then fails on any runtime QML warning from the plugin, a peak RSS
 over 384 MiB, or more than 64 MiB of growth across the soak.
 
 </details>
+
+## 🔌 Process-level tests
+
+`tests/cli.rs` runs the real binary: `--sensors` and `--journal` must exit
+cleanly when the reader closes early (this used to abort with a core dump,
+found through Deep Signals' own crash trends), and invalid journal filters
+are refused before `journalctl` runs. Replacing `emit` with `println!` makes
+the test fail.
 
 ## 🧬 Mutation testing
 

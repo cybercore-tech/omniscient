@@ -1,0 +1,14 @@
+[Unit]
+Description=Omniscient watch: alert on new system problems
+Documentation=https://github.com/cybercore-tech/omniscient
+After=graphical-session.target
+
+[Service]
+Type=oneshot
+ExecStart=%h/.local/bin/omniscient --watch
+# Unprivileged by construction: no sudo, no pkexec, so never a prompt.
+NoNewPrivileges=yes
+Nice=10
+IOSchedulingClass=idle
+MemoryMax=512M
+TimeoutStartSec=180

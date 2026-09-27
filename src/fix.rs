@@ -213,7 +213,7 @@ fn write_report(outcome: &Outcome) -> Result<()> {
     for (label, url) in &outcome.references {
         writeln!(report, "- [{label}]({url})")?;
     }
-    println!("FIX REPORT / {}", report_path.display());
+    crate::emit(&format!("FIX REPORT / {}", report_path.display()))?;
     if !outcome.success {
         bail!("fix failed with {status}; see {}", report_path.display());
     }

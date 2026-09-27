@@ -94,9 +94,26 @@ Item {
   onReportTextChanged: root.chunkReport()
   onPackageCategoryChanged: root.chunkReport()
 
+  // Payloads come from `omarchy-shell shell summon <id> '<json>'`, e.g. a
+  // watch notification: {"tab":"journal","unit":"x.service","priority":4}.
+  // Only known tabs, a validated unit and priorities 0-7 are honoured.
   function open(payloadJson) {
     root.opened = true
     SnapshotReader.refresh()
+    WatchReader.refresh()
+    var payload = null
+    try {
+      payload = payloadJson && String(payloadJson).length <= 4096 ? JSON.parse(payloadJson) : null
+    } catch (error) {
+      payload = null
+    }
+    if (payload === null || typeof payload !== "object") return
+    var tabs = root.tabs.map(function(t) { return t.id })
+    if (tabs.indexOf(String(payload.tab)) >= 0) root.tab = String(payload.tab)
+    if (typeof payload.unit === "string" && /^[A-Za-z0-9@._:\\-]{1,256}$/.test(payload.unit)) journalView.unit = payload.unit
+    var priority = Number(payload.priority)
+    if (Number.isInteger(priority) && priority >= 0 && priority <= 7) journalView.priority = priority
+    if (payload.watch === true) auditBodyScroll.contentY = 0
   }
 
   function close() {
@@ -818,6 +835,63 @@ Item {
             id: auditBodyContent
             width: auditBodyScroll.width - 14
             spacing: 10
+
+        // Latest hourly watch (omniscient --watch); click a finding that
+        // names a unit to open the JOURNAL on it.
+        Rectangle {
+          visible: WatchReader.available
+          Layout.fillWidth: true
+          implicitHeight: watchColumn.implicitHeight + 20
+          color: "#0d1320"
+          border.width: 1
+          border.color: WatchReader.urgent ? "#ff667d" : (WatchReader.warning ? "#ff8f70" : "#263445")
+          ColumnLayout {
+            id: watchColumn
+            anchors.fill: parent
+            anchors.margins: 10
+            spacing: 4
+            Text {
+              text: "WATCH / LAST CHECK " + WatchReader.clock() + " / "
+                    + WatchReader.urgent + " URGENT · " + WatchReader.warning + " WARNING · " + WatchReader.watchCount + " WATCH"
+                    + (WatchReader.newCount ? " · " + WatchReader.newCount + " NEW" : "")
+              color: "#52e8ff"
+              font.family: "monospace"
+              font.pixelSize: root.fontSection
+              font.bold: true
+            }
+            Repeater {
+              model: WatchReader.findings.slice(0, 8)
+              delegate: Rectangle {
+                id: watchRow
+                required property var modelData
+                property bool hovered: false
+                Layout.fillWidth: true
+                implicitHeight: 22
+                color: watchRow.hovered && watchRow.modelData.unit.length ? "#1a2940" : "transparent"
+                RowLayout {
+                  anchors.fill: parent
+                  spacing: 8
+                  Text { text: watchRow.modelData.severity.toUpperCase(); Layout.preferredWidth: 64; color: WatchReader.severityColor(watchRow.modelData.severity); font.family: "monospace"; font.pixelSize: root.fontMicro; font.bold: true }
+                  Text { visible: watchRow.modelData.isNew; text: "NEW"; color: "#ff4f9a"; font.family: "monospace"; font.pixelSize: root.fontMicro; font.bold: true }
+                  Text { Layout.fillWidth: true; text: watchRow.modelData.title; color: "#c8d2e8"; font.family: "monospace"; font.pixelSize: root.fontSmall; elide: Text.ElideRight }
+                  Text { visible: watchRow.modelData.unit.length > 0; text: "JOURNAL ›"; color: "#52e8ff"; font.family: "monospace"; font.pixelSize: root.fontMicro }
+                }
+                MouseArea {
+                  anchors.fill: parent
+                  enabled: watchRow.modelData.unit.length > 0
+                  hoverEnabled: true
+                  cursorShape: Qt.PointingHandCursor
+                  onEntered: watchRow.hovered = true
+                  onExited: watchRow.hovered = false
+                  onClicked: {
+                    journalView.unit = watchRow.modelData.unit
+                    root.tab = "journal"
+                  }
+                }
+              }
+            }
+          }
+        }
 
         RowLayout {
           Layout.fillWidth: true

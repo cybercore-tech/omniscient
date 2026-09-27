@@ -481,7 +481,7 @@ pub fn run(args: &[String]) -> Result<()> {
     }
     let json = serde_json::to_string(&output)?;
     anyhow::ensure!(json.len() <= 8 * 1024 * 1024, "journal view exceeded 8 MiB");
-    println!("{json}");
+    crate::emit(&json)?;
     Ok(())
 }
 

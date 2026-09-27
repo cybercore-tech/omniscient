@@ -17,6 +17,7 @@ ShellRoot {
   readonly property string reportDir: harness.fixtures + "/state/omniscient/audit"
   readonly property int soakSeconds: Number(Quickshell.env("OMNI_SOAK_SECONDS") || "60")
   property var panel: panelLoader.item
+  property var bar: barLoader.item
   property int failures: 0
   property int checks: 0
   property int stepIndex: 0
@@ -328,6 +329,30 @@ ShellRoot {
     { name: "journal stopped", wait: 200, run: function() {
       harness.check(harness.panel.journal.tails === harness.tailsBefore, "no journal reads off the tab", harness.panel.journal.tails - harness.tailsBefore)
     } },
+    { name: "watch published", wait: 4000, until: function() { return WatchReader.available }, run: function() {
+      watchInstaller.running = true
+    } },
+    { name: "watch read", wait: 300, run: function() {
+      harness.check(WatchReader.available && WatchReader.urgent === 1 && WatchReader.findings.length === 3, "watch.json is read", WatchReader.findings.length)
+      harness.check(WatchReader.findings[0].unit === "cyberdeck-diag-deck.service" && WatchReader.findings[0].isNew, "finding unit and new flag")
+      var bar = harness.bar
+      harness.check(bar !== null, "bar widget loads", barLoader.status)
+      harness.check(bar.alertCount === 2, "badge counts urgent + warning", bar.alertCount)
+      harness.check(String(bar.statusColor) !== "#c8e967", "an urgent finding turns the mark away from healthy green", String(bar.statusColor))
+      harness.check(bar.tooltip().indexOf("1 urgent, 1 warning, 1 new") >= 0, "tooltip summarizes the watch", bar.tooltip())
+      var p = harness.panel
+      p.open('{"tab":"journal","unit":"cyberdeck-diag-deck.service","priority":3}')
+      harness.check(p.tab === "journal" && p.journal.unit === "cyberdeck-diag-deck.service" && p.journal.priority === 3, "a notification payload opens the journal on the unit", p.tab + " / " + p.journal.unit)
+      p.journal.unit = ""
+      p.journal.priority = 4
+      p.open('{"tab":"../../etc","unit":"$(touch /tmp/x)","priority":99}')
+      harness.check(p.tab === "journal" && p.journal.unit === "" && p.journal.priority === 4, "hostile payload fields are ignored", p.tab + " / " + p.journal.unit + " / " + p.journal.priority)
+      p.open("{not json")
+      p.open("x".repeat(5000))
+      harness.check(p.opened, "malformed and oversized payloads are ignored")
+      p.open('{"tab":"audit","watch":true}')
+      harness.check(p.tab === "audit", "the watch payload opens the audit tab")
+    } },
     { name: "polling stops", wait: 5000, run: function() {} },
     { name: "polling stopped", wait: 500, run: function() {
       harness.check(harness.panel.sensorPolls === harness.pollsBefore, "leaving the sensor tabs stops polling", harness.panel.sensorPolls - harness.pollsBefore)
@@ -356,6 +381,16 @@ ShellRoot {
   Loader {
     id: panelLoader
     source: "plugin/Panel.qml"
+  }
+
+  Process {
+    id: watchInstaller
+    command: ["/usr/bin/cp", "--", harness.fixtures + "/watch.json", (Quickshell.env("XDG_RUNTIME_DIR") || "") + "/omniscient/watch.json"]
+  }
+
+  Loader {
+    id: barLoader
+    source: "plugin/BarWidget.qml"
   }
 
   Process {

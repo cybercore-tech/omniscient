@@ -292,6 +292,29 @@ NVMe and ASUS layouts are tested on hardware without them.
 omniscient --sensors | jq .cpu
 ```
 
+## ⟦◉⟧ WATCH // TOLD WHEN SOMETHING NEW BREAKS
+
+`omniscient --watch` is a light, unprivileged check for an hourly user timer:
+
+```bash
+./scripts/install-watch.sh           # enable the hourly timer
+./scripts/install-watch.sh --remove  # disable and remove it
+systemctl --user start omniscient-watch.service   # run one now
+```
+
+Each run takes the Deep Signals checks (about 6 s), compares them with the
+previous watch, and sends an Omarchy notification for each **new** warning
+or urgent finding (more than three become one summary). Clicking a
+notification opens the HUD where the problem is: the JOURNAL filtered to the
+unit when the finding names one, otherwise the WATCH card on the AUDIT tab.
+The first run only records a baseline and says the watch is on, so problems
+you already have do not arrive as a burst.
+
+The bar widget is live: its mark takes the colour of the worst current
+finding, a badge counts urgent and warning findings, and hovering shows the
+health score, the last watch, the top finding and one fresh temperature
+reading (nothing polls in the background).
+
 ## ⟦☰⟧ JOURNAL // WHY IT BROKE
 
 The **JOURNAL** tab (`omniscient --journal`) shows the journal the user can
@@ -395,6 +418,9 @@ src/changes.rs     CHANGES.md: diff against the previous audit
 src/history.rs     bounded trend files (battery, shell memory)
 src/sensors.rs     --sensors: live read-only hardware readings for the HUD tabs
 src/journal.rs     --journal: validated, collapsed journal views and offenders
+src/watch.rs       --watch: hourly new-problem alerts and watch.json
+systemd/           omniscient-watch.service + .timer (scripts/install-watch.sh)
+tests/cli.rs       process-level tests of the commands the HUD reads
 src/elevation.rs   sudo default and pkexec opt-in backend selection
 src/health.rs      health scoring from system signals
 src/paths.rs       XDG report-path resolution and per-user override
@@ -429,7 +455,7 @@ Run the local quality gates before publishing a change:
 test target, doctests, rustdoc with warnings fatal, shell syntax checks, the
 static security gate, and the plugin gate. The plugin gate lints every QML
 file with Qt 6 `qmllint` at the strictest setting, then loads the real plugin
-into a nested, memory-capped compositor and drives it through 83 checks,
+into a nested, memory-capped compositor and drives it through 93 checks,
 including a 75 MB report and a memory soak. It needs an Omarchy session, so CI
 skips it (`OMNISCIENT_SKIP_PLUGIN_GATE=1`); run it locally before pushing.
 See [docs/TESTING.md](docs/TESTING.md).

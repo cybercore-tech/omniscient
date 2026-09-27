@@ -7,3 +7,4 @@ SensorsView 1.0 SensorsView.qml
 DrivesView 1.0 DrivesView.qml
 PlatformView 1.0 PlatformView.qml
 JournalView 1.0 JournalView.qml
+singleton WatchReader 1.0 WatchReader.qml

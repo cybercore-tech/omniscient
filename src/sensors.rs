@@ -810,7 +810,7 @@ pub fn run() -> anyhow::Result<()> {
     let reading = read_all(&root, Duration::from_millis(250), root == Path::new("/"));
     let json = serde_json::to_string(&reading)?;
     anyhow::ensure!(json.len() <= 512 * 1024, "sensor reading exceeded 512 KiB");
-    println!("{json}");
+    crate::emit(&json)?;
     Ok(())
 }
 

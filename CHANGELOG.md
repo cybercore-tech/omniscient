@@ -6,6 +6,16 @@ All notable changes to Omniscient are documented here.
 
 ### Added
 
+- **Watch mode** (`omniscient --watch`, `src/watch.rs`, hourly user timer via
+  `scripts/install-watch.sh`): new warning/urgent findings become Omarchy
+  notifications that open the HUD on the JOURNAL for the unit (or the WATCH
+  card); the first run records a baseline; `watch.json` feeds a WATCH card on
+  the AUDIT tab and the bar widget.
+- **Live bar widget**: mark coloured by the worst finding, urgent+warning
+  badge, tooltip with health, last watch, top finding and an on-hover
+  temperature reading.
+- Panel payloads (`summon <id> '<json>'`): tab, journal unit and priority,
+  validated.
 - **JOURNAL** tab (`omniscient --journal`, `src/journal.rs`): priority, boot,
   time-range, unit and search filters; repeats collapsed by message shape;
   top offenders per boot; live FOLLOW tail by cursor; expandable lines.
@@ -40,6 +50,10 @@ All notable changes to Omniscient are documented here.
 
 ### Fixed
 
+- `--sensors`, `--journal` and fix output crashed (SIGABRT with a core dump)
+  when the HUD closed the reader early: `println!` panics on a broken pipe
+  under `panic = "abort"`. Output now goes through `emit`, which treats a
+  closed reader as done (tests/cli.rs reproduces it).
 - The repair confirmation described the fix-center *selection* rather than
   the fix being run, so REVIEW / APPLY on any suggestion but the selected one
   showed the wrong finding and command. It now looks the fix up by id.

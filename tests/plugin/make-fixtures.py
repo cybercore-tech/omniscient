@@ -190,6 +190,20 @@ def main():
         modules=[{"name": f"m{n}", "slug": f"m{n}", "state": "complete"} for n in range(10_000)],
     ))
 
+    watch = {
+        "version": 1, "updated_at": "2026-01-01T12:34:00+00:00", "worst": "urgent",
+        "counts": {"urgent": 1, "warning": 1, "watch": 1}, "new_count": 1, "resolved_count": 0,
+        "findings": [
+            {"key": "restart-loop:system:cyberdeck-diag-deck.service", "severity": "urgent",
+             "title": "cyberdeck-diag-deck.service restarted 229 times", "detail": "d", "new": True,
+             "unit": "cyberdeck-diag-deck.service"},
+            {"key": "crash:chromium", "severity": "warning", "title": "chromium crashed 10 times in 7 days",
+             "detail": "d", "new": False, "unit": ""},
+            {"key": "pacnew", "severity": "watch", "title": "3 configuration updates waiting", "detail": "d",
+             "new": False, "unit": ""},
+        ],
+    }
+    write(os.path.join(root, "watch.json"), json.dumps(watch))
     sysroot = os.path.join(root, "sysroot")
     write_sysroot(sysroot)
     # The fake binary fails audits (to test error reporting) but forwards
