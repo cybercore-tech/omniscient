@@ -88,6 +88,38 @@ pub fn write(snapshot: &AuditSnapshot) -> Result<PathBuf> {
             temporary.display()
         )
     })?;
+
+    // Also publish unified cybercore status contract
+    let tool_status = cybercore::status::ToolStatus {
+        schema_version: 1,
+        tool: "omniscient".to_string(),
+        version: "0.5.0".to_string(),
+        host: snapshot.host.clone(),
+        updated_at: snapshot.updated_at.clone(),
+        health: match snapshot.health.as_ref().map(|h| h.score).unwrap_or(100) {
+            s if s < 50 => cybercore::status::Health::Urgent,
+            s if s < 80 => cybercore::status::Health::Warning,
+            s if s < 100 => cybercore::status::Health::Watch,
+            _ => cybercore::status::Health::Ok,
+        },
+        summary: snapshot.message.clone(),
+        metrics: vec![
+            cybercore::status::Metric {
+                label: "Audit Score".to_string(),
+                value: snapshot.health.as_ref().map(|h| h.score.to_string()).unwrap_or_else(|| "100".to_string()),
+                unit: Some("pts".to_string()),
+            },
+        ],
+        events: vec![],
+        actions: vec![
+            cybercore::status::Action {
+                label: "Open Omniscient TUI".to_string(),
+                argv: vec!["omniscient".to_string()],
+            },
+        ],
+    };
+    let _ = cybercore::status::write(&tool_status);
+
     Ok(destination)
 }
 
