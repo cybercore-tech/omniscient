@@ -388,11 +388,16 @@ pub fn utilization(before: &str, after: &str) -> Option<f64> {
     };
     let (total_a, idle_a) = parse(before)?;
     let (total_b, idle_b) = parse(after)?;
-    let total = total_b - total_a;
-    let idle = idle_b - idle_a;
-    // Counters only grow; a delta that shrinks (CPU hotplug, a counter
-    // reset) or idles more than it ran is not a measurement.
-    if total <= 0.0 || idle < 0.0 || idle > total {
+    busy_percent(total_b - total_a, idle_b - idle_a)
+}
+
+/// Busy share of a counter delta, in percent to one decimal: always within
+/// `0.0..=100.0` (proved by `proofs::busy_percent_is_a_percentage`).
+/// Counters only grow; a delta that shrinks (CPU hotplug, a counter reset),
+/// idles more than it ran, or is not finite is not a measurement.
+#[must_use]
+pub fn busy_percent(total: f64, idle: f64) -> Option<f64> {
+    if !total.is_finite() || !idle.is_finite() || total <= 0.0 || idle < 0.0 || idle > total {
         return None;
     }
     Some(((1.0 - idle / total) * 1000.0).round() / 10.0)
@@ -826,14 +831,7 @@ mod tests {
 
     /// Builds a fake sysfs/procfs tree from `(relative path, contents)`.
     fn tree(files: &[(&str, &str)]) -> PathBuf {
-        use std::sync::atomic::{AtomicUsize, Ordering};
-        static N: AtomicUsize = AtomicUsize::new(0);
-        let root = std::env::temp_dir().join(format!(
-            "omniscient-sensors-{}-{}",
-            std::process::id(),
-            N.fetch_add(1, Ordering::SeqCst)
-        ));
-        let _ = fs::remove_dir_all(&root);
+        let root = crate::scratch::dir("sensors");
         for (path, contents) in files {
             let path = root.join(path);
             fs::create_dir_all(path.parent().expect("parent")).expect("dirs");

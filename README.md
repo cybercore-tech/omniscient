@@ -104,6 +104,19 @@ The installer:
   a `Text file busy` failure;
 - checks whether `~/.local/bin` is available on your `PATH`.
 
+For the HUD's elevated audit and the one-click repairs, also install the
+root-owned copy the privileged helper runs from:
+
+```bash
+./install.sh --system
+```
+
+This builds as your user and asks `sudo` only to place a root-owned
+`/usr/local/bin/omniscient`. The helper refuses to start from any executable
+that is not owned and writable only by root, so a user-writable binary can
+never be the thing `pkexec` runs. `~/.local/bin` stays first on `PATH`; the
+system copy exists only for the helper. Re-run `--system` after updating.
+
 To choose another Cargo build directory:
 
 ```bash
@@ -178,10 +191,20 @@ select privileged modules → dashboard pauses → sudo -v → dashboard resumes
 ```
 
 Only the hardware, storage, Btrfs snapshot, kernel-log, and Deep Signals
-modules request elevated access. Modules never prompt on their own: inside
-the elevated HUD child they run directly, and in the dashboard they use
-`sudo -n`, which succeeds only with the credential cached by the single
-`sudo -v` above. A check that cannot elevate says "needs the elevated audit"
+modules request elevated access, and never on their own. The audit always
+runs as you; each elevated command first passes the helper's allowlist
+(`lshw`, `dmesg`, `btrfs`, `smartctl` with fixed flags on real mounts and
+disks) and then runs through one of three routes:
+
+- **HUD and repairs:** one `pkexec` authorization starts
+  `omniscient --privileged-helper` from the root-owned install
+  (`./install.sh --system`). It reads one JSON request per line, runs only
+  allowlisted commands and the two allowlisted repairs, returns bounded
+  output, writes nothing in your directories, and exits when the audit ends.
+- **Dashboard:** `sudo -n`, which succeeds only with the credential cached
+  by the single `sudo -v` above.
+- **Already root:** directly, after the same allowlist check.
+ A check that cannot elevate says "needs the elevated audit"
 instead of asking again. If authorization is canceled, the dashboard returns without
 starting the audit.
 
@@ -455,6 +478,7 @@ src/trends.rs      --trends: 30-day series from the history files
 systemd/           omniscient-watch.service + .timer (scripts/install-watch.sh)
 tests/cli.rs       process-level tests of the commands the HUD reads
 src/elevation.rs   sudo default and pkexec opt-in backend selection
+src/helper.rs      the root helper: allowlist (`decide`), request loop, client
 src/health.rs      health scoring from system signals
 src/paths.rs       XDG report-path resolution and per-user override
 src/report.rs      SUMMARY.md generation
@@ -469,7 +493,8 @@ tests/plugin/      plugin harness (nested compositor) and synthetic fixtures
 scripts/package.sh reproducible Linux release archive
 assets/             release preview and project visuals
 docs/               detailed operator contracts, including package integrity
-install.sh         locked release build and atomic installation
+install.sh         locked release build and atomic installation (--system: root-owned helper copy)
+scripts/verify.sh  deep verification: audit, deny, semgrep, geiger, Kani, fuzz, mutants
 LICENSE            MIT license
 CHANGELOG.md       release history
 ```

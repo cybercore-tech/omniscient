@@ -8,6 +8,7 @@ repository = "https://github.com/cybercore-tech/omniscient"
 
 [lints.rust]
 unsafe_code = "forbid"
+unexpected_cfgs = { level = "warn", check-cfg = ["cfg(kani)", "cfg(fuzzing)"] }
 
 [lints.clippy]
 pedantic = { level = "deny", priority = -1 }

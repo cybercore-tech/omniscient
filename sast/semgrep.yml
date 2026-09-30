@@ -1,0 +1,115 @@
+# Project-specific SAST rules: the review classes that blocked or were
+# raised against Omarchy plugins (download-to-shell, unpinned installs,
+# prompting sudo, predictable temp paths, shell interpolation) plus the
+# root helper's own invariants. Run by scripts/verify.sh:
+#   semgrep scan --config sast/semgrep.yml --error --metrics=off
+rules:
+  - id: helper-spawns-only-allowlisted-programs
+    languages: [rust]
+    severity: ERROR
+    message: >-
+      The root helper may only execute a program returned by check_run /
+      decide (a &'static str from the allowlist) or the fix path.
+    paths: {include: ["src/helper.rs"]}
+    patterns:
+      - pattern-either:
+          - pattern: std::process::Command::new($P)
+          - pattern: Command::new($P)
+          - pattern: capture::run($P, ...)
+          - pattern: crate::capture::run($P, ...)
+      - metavariable-pattern:
+          metavariable: $P
+          patterns:
+            - pattern-not: program
+            - pattern-not: elevation::program()
+            - pattern-not: crate::elevation::program()
+
+  - id: sudo-must-be-non-interactive
+    languages: [rust]
+    severity: ERROR
+    message: >-
+      sudo from a module or test must never prompt: pass -n (use
+      elevation::non_interactive_args).
+    patterns:
+      - pattern-either:
+          - pattern: Command::new("sudo")
+          - pattern: Command::new("/usr/bin/sudo")
+          - pattern: std::process::Command::new("sudo")
+      - pattern-not-inside: |
+          $C.arg("-n")
+      - pattern-not-inside: |
+          fn start(...) { ... }
+
+  - id: predictable-temp-path
+    languages: [rust]
+    severity: ERROR
+    message: >-
+      temp_dir().join(<name>) is predictable and pre-creatable by another
+      user; use a unique, exclusively created directory (create_dir, 0700).
+    pattern-either:
+      - pattern: std::env::temp_dir().join(...)
+      - pattern: env::temp_dir().join(...)
+
+  - id: shell-interpolation
+    languages: [rust]
+    severity: ERROR
+    message: Never run a shell with a built command line; exec argv directly.
+    pattern-either:
+      - pattern: Command::new("sh").arg("-c")
+      - pattern: Command::new("bash").arg("-c")
+      - pattern: Command::new("/bin/sh").arg("-c")
+      - pattern: capture::run("sh", ...)
+      - pattern: crate::capture::run("sh", ...)
+
+  - id: no-unwrap-in-root-code
+    languages: [rust]
+    severity: ERROR
+    message: A panic in the root helper drops the elevated session; return an error.
+    paths: {include: ["src/helper.rs", "src/fix.rs"]}
+    patterns:
+      - pattern-either:
+          - pattern: $X.unwrap()
+          - pattern: $X.expect(...)
+          - pattern: panic!(...)
+      - pattern-not-inside: |
+          mod tests { ... }
+
+  - id: download-to-shell
+    languages: [bash]
+    severity: ERROR
+    message: Download-to-shell is blocked by the Omarchy marketplace baseline.
+    pattern-either:
+      - pattern: curl ... | sh
+      - pattern: curl ... | bash
+      - pattern: wget ... | sh
+      - pattern: wget ... | bash
+      - pattern: bash <(curl ...)
+
+  - id: unpinned-cargo-git-install
+    languages: [bash]
+    severity: ERROR
+    message: cargo install --git must pin --rev (marketplace baseline).
+    patterns:
+      - pattern: cargo install ... --git $URL ...
+      - pattern-not: cargo install ... --rev $REV ...
+
+  - id: fixed-tmp-path-in-script
+    languages: [bash]
+    severity: WARNING
+    message: Fixed /tmp paths are predictable; use mktemp.
+    patterns:
+      - pattern-regex: '(?<![\w.-])/tmp/[A-Za-z][\w.-]*(?!\.X)'
+      - pattern-not-regex: 'mktemp[^\n]*/tmp/[\w.-]*'
+
+  - id: qml-shell-command
+    languages: [generic]
+    severity: ERROR
+    message: >-
+      A QML Process must exec the omniscient binary with argv, never a shell
+      command line (payloads come from reports and journal text).
+    paths: {include: ["omarchy-plugin/*.qml"]}
+    pattern-either:
+      - pattern: '["sh", "-c", ...]'
+      - pattern: '["bash", "-c", ...]'
+      - pattern: '"sh", "-c"'
+      - pattern: '"bash", "-c"'

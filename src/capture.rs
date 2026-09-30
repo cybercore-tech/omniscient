@@ -203,22 +203,64 @@ impl Reader {
     }
 }
 
-/// Runs `executable` with root privileges, never prompting: directly when
-/// this process is already the elevated audit child, otherwise through
-/// `sudo -n`, which only uses a credential the dashboard already cached.
+/// Runs `executable` with root privileges, never prompting, and only if the
+/// command is on the privileged allowlist ([`crate::helper::check_run`]),
+/// whichever route runs it: directly when this process already is root,
+/// through the privileged helper when one is running (the HUD), or through
+/// `sudo -n` with the dashboard's cached credential.
 ///
 /// # Errors
 ///
-/// Returns an error when no prompt-free elevation is available or the
-/// command cannot be started.
+/// Returns an error when the command is not allowlisted, no prompt-free
+/// elevation is available, or the command cannot be started.
 pub fn run_elevated(executable: &Path, args: &[&str], limits: Limits) -> std::io::Result<Output> {
-    if crate::elevation::is_privileged() {
+    let name = executable
+        .file_name()
+        .map(|n| n.to_string_lossy().into_owned())
+        .unwrap_or_default();
+    let owned = args.iter().map(|arg| (*arg).to_owned()).collect::<Vec<_>>();
+    crate::helper::check_run(&name, &owned, &crate::helper::SystemFacts::live())
+        .map_err(std::io::Error::other)?;
+    if crate::elevation::is_root() {
         return run(executable, args, limits);
+    }
+    if crate::helper::active() {
+        let reply = crate::helper::request(&crate::helper::Request::Run {
+            program: name,
+            args: owned,
+        })
+        .map_err(std::io::Error::other)?;
+        if !reply.error.is_empty() {
+            return Err(std::io::Error::other(reply.error));
+        }
+        return Ok(output_from_reply(&reply));
     }
     let executable = executable.to_string_lossy();
     let elevated = crate::elevation::non_interactive_args(&executable, args)
         .ok_or_else(|| std::io::Error::other("needs the elevated audit"))?;
     run(Path::new(crate::elevation::program()), &elevated, limits)
+}
+
+/// Rebuilds an [`Output`] from a helper reply.
+fn output_from_reply(reply: &crate::helper::Reply) -> Output {
+    use std::os::unix::process::ExitStatusExt;
+    let stream = |text: &str, dropped: u64| {
+        let bytes = text.as_bytes().to_vec();
+        Stream {
+            total: bytes.len() as u64 + dropped,
+            lines: text.matches('\n').count() as u64,
+            bytes,
+        }
+    };
+    Output {
+        // A wait status carries the exit code in its second byte.
+        status: reply
+            .status
+            .map(|code| ExitStatus::from_raw((code & 0xff) << 8)),
+        timed_out: reply.timed_out,
+        stdout: stream(&reply.stdout, reply.dropped),
+        stderr: stream(&reply.stderr, 0),
+    }
 }
 
 /// Removes terminal control sequences and control characters, keeping
@@ -312,15 +354,17 @@ pub fn bound_text(text: &str, dropped_bytes: u64, max_bytes: usize, max_lines: u
     let clean = sanitize(text).replace("```", "'''");
     let total_lines = clean.lines().count();
     let mut end = clean.len();
+    // Cut after the newline that ends the last kept line, so output of
+    // exactly `max_lines` lines is not reported as truncated (fuzz-found).
     if let Some((index, _)) = clean.match_indices('\n').nth(max_lines.saturating_sub(1)) {
-        end = end.min(index);
+        end = end.min(index + 1);
     }
     if end > max_bytes {
         let mut cut = max_bytes;
         while !clean.is_char_boundary(cut) {
             cut -= 1;
         }
-        end = clean[..cut].rfind('\n').unwrap_or(cut);
+        end = clean[..cut].rfind('\n').map_or(cut, |index| index + 1);
     }
     let kept = &clean[..end];
     let omitted_bytes = (clean.len() - end) as u64 + dropped_bytes;
@@ -358,6 +402,16 @@ mod tests {
     #[test]
     fn short_text_is_returned_clean_and_whole() {
         assert_eq!(bound_text("a\nb\n", 0, 100, 10), "a\nb\n");
+        assert_eq!(
+            bound_text("a\nb\n", 0, 100, 2),
+            "a\nb\n",
+            "exactly max_lines is not truncated"
+        );
+        assert_eq!(
+            bound_text("a\n", 0, 2, 1),
+            "a\n",
+            "exactly max_bytes is not truncated"
+        );
     }
 
     #[test]

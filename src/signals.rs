@@ -764,7 +764,7 @@ fn systemctl_scope(scope: &str) -> Option<Vec<String>> {
     if scope == "system" {
         return Some(Vec::new());
     }
-    if crate::elevation::is_privileged() {
+    if crate::elevation::is_root() {
         let uid = owner_uid()?;
         let name = stdout_of("id", &["-nu", &uid.to_string()])?;
         Some(vec![
@@ -2074,8 +2074,7 @@ mod tests {
 
     #[test]
     fn pacnew_files_are_found_within_depth() {
-        let root = std::env::temp_dir().join(format!("omniscient-pacnew-{}", std::process::id()));
-        let _ = fs::remove_dir_all(&root);
+        let root = crate::scratch::dir("pacnew");
         fs::create_dir_all(root.join("a/b")).expect("dirs");
         fs::write(root.join("pacman.conf.pacnew"), "").expect("file");
         fs::write(root.join("a/b/x.pacsave"), "").expect("file");

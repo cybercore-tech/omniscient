@@ -53,7 +53,17 @@ fn capture_with(cmd: &str, args: &[&str], limits: crate::capture::Limits) -> Str
     let Some(executable) = crate::pathcheck::resolve(cmd) else {
         return format!("_{cmd}: not installed, skipped_\n");
     };
-    match crate::capture::run(&executable, args, limits) {
+    describe(cmd, crate::capture::run(&executable, args, limits), limits)
+}
+
+/// A captured command as report text: bounded stdout, plus a note when it
+/// timed out or failed (with bounded stderr).
+fn describe(
+    cmd: &str,
+    result: std::io::Result<crate::capture::Output>,
+    limits: crate::capture::Limits,
+) -> String {
+    match result {
         Ok(out) => {
             let mut s = crate::capture::bound_text(
                 &out.stdout.text(),
@@ -83,24 +93,22 @@ fn capture_with(cmd: &str, args: &[&str], limits: crate::capture::Limits) -> Str
             }
             s
         }
-        Err(e) => format!("_{cmd}: failed to run ({e})_\n"),
+        Err(e) => format!("_{cmd}: {e}_\n"),
     }
 }
 
+/// An elevated capture: allowlisted and prompt-free, through
+/// [`crate::capture::run_elevated`] (helper, `sudo -n`, or already root).
 fn capture_privileged(command: &str, args: &[&str]) -> String {
     let Some(executable) = crate::pathcheck::resolve(command) else {
         return format!("_{command}: not installed, skipped_\n");
     };
-    let executable = executable.to_string_lossy().into_owned();
-    if crate::elevation::is_privileged() {
-        return capture(&executable, args);
-    }
-    // Never prompt from inside a module: `sudo -n` fails at once without a
-    // cached credential, and per-command pkexec is not used at all.
-    match crate::elevation::non_interactive_args(&executable, args) {
-        Some(elevated_args) => capture(crate::elevation::program(), &elevated_args),
-        None => format!("_{command}: needs the elevated audit_\n"),
-    }
+    let limits = crate::capture::Limits::default();
+    describe(
+        command,
+        crate::capture::run_elevated(&executable, args, limits),
+        limits,
+    )
 }
 
 /// Most bytes of one module report. Sections are already bounded by
@@ -1345,9 +1353,7 @@ mod tests {
 
     #[test]
     fn bluetooth_report_is_explicit_when_service_is_unavailable() {
-        let directory =
-            std::env::temp_dir().join(format!("omniscient-bluetooth-test-{}", std::process::id()));
-        fs::create_dir_all(&directory).expect("create test report directory");
+        let directory = crate::scratch::dir("bluetooth-test");
         Bluetooth.run(&directory).expect("write bluetooth report");
         let report =
             fs::read_to_string(directory.join("bluetooth.md")).expect("read bluetooth report");
@@ -1425,9 +1431,7 @@ mod tests {
     #[test]
     #[ignore = "runs real host commands; needs an Omarchy system"]
     fn real_omarchy_report_is_bounded() {
-        let directory =
-            std::env::temp_dir().join(format!("omniscient-real-{}", std::process::id()));
-        fs::create_dir_all(&directory).expect("create report directory");
+        let directory = crate::scratch::dir("real");
         Omarchy.run(&directory).expect("module runs");
         let report = fs::read_to_string(directory.join("omarchy.md")).expect("report written");
         fs::remove_dir_all(&directory).expect("remove report directory");
@@ -1455,9 +1459,7 @@ mod tests {
     #[test]
     #[ignore = "runs real host commands"]
     fn real_deep_signals_run() {
-        let directory =
-            std::env::temp_dir().join(format!("omniscient-signals-{}", std::process::id()));
-        fs::create_dir_all(&directory).expect("create report directory");
+        let directory = crate::scratch::dir("signals");
         let started = std::time::Instant::now();
         DeepSignals.run(&directory).expect("module runs");
         let report = fs::read_to_string(directory.join("signals.md")).expect("report written");

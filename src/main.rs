@@ -1,3 +1,6 @@
+// Also set in Cargo.toml [lints]; repeated here so cargo-geiger sees it.
+#![forbid(unsafe_code)]
+
 use anyhow::{Context, Result};
 
 fn main() -> Result<()> {
@@ -7,6 +10,8 @@ fn main() -> Result<()> {
             .get(index + 1)
             .context("--fix requires an allowlisted fix id")?;
         omniscient::fix::run(fix_id)
+    } else if args.get(1).map(String::as_str) == Some("--privileged-helper") {
+        omniscient::helper::serve()
     } else if args.iter().any(|arg| arg == "--trends") {
         omniscient::trends::run()
     } else if args.iter().any(|arg| arg == "--watch") {

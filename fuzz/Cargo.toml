@@ -1,0 +1,65 @@
+[package]
+name = "omniscient-fuzz"
+version = "0.0.0"
+publish = false
+edition = "2021"
+
+[package.metadata]
+cargo-fuzz = true
+
+[dependencies]
+libfuzzer-sys = "0.4"
+regex = "1"
+serde_json = "1"
+
+[dependencies.omniscient]
+path = ".."
+
+[[bin]]
+name = "helper-decide"
+path = "fuzz_targets/helper_decide.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "mount-decode-diff"
+path = "fuzz_targets/mount_decode_diff.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "disk-name-diff"
+path = "fuzz_targets/disk_name_diff.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "journal-args"
+path = "fuzz_targets/journal_args.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "journal-entries"
+path = "fuzz_targets/journal_entries.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "capture-bound"
+path = "fuzz_targets/capture_bound.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "parsers"
+path = "fuzz_targets/parsers.rs"
+test = false
+doc = false
+bench = false

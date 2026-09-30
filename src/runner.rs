@@ -135,7 +135,7 @@ mod tests {
             Box::new(Sleepy("e", true)),
             Box::new(Sleepy("skipped", true)),
         ];
-        let root = std::env::temp_dir().join(format!("omniscient-runner-{}", std::process::id()));
+        let root = crate::scratch::dir("runner");
         let started = Instant::now();
         let mut starts = 0;
         let mut outcomes = Vec::new();

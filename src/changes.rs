@@ -242,8 +242,7 @@ mod tests {
 
     #[test]
     fn previous_picks_the_newest_older_audit_with_signals() {
-        let root = std::env::temp_dir().join(format!("omniscient-changes-{}", std::process::id()));
-        let _ = std::fs::remove_dir_all(&root);
+        let root = crate::scratch::dir("changes");
         let write = |audit: &str, with_signals: bool| {
             let dir = root.join(audit).join("signals-x");
             std::fs::create_dir_all(&dir).expect("dir");

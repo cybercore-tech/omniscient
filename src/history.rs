@@ -131,7 +131,7 @@ mod tests {
 
     #[test]
     fn record_replaces_close_samples_and_caps_the_file() {
-        let dir = std::env::temp_dir().join(format!("omniscient-history-{}", std::process::id()));
+        let dir = crate::scratch::dir("history");
         let file = dir.join("t.tsv");
         let _ = std::fs::remove_dir_all(&dir);
         record(&file, &sample(1_000, "a", 1.0), 3_600).expect("record");

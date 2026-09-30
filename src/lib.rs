@@ -1,9 +1,13 @@
+// Also set in Cargo.toml [lints]; repeated here so cargo-geiger sees it.
+#![forbid(unsafe_code)]
+
 pub mod capture;
 pub mod changes;
 pub mod elevation;
 pub mod fix;
 pub mod headless;
 pub mod health;
+pub mod helper;
 pub mod history;
 pub mod hud;
 pub mod journal;
@@ -11,8 +15,12 @@ pub mod modules;
 pub mod palette;
 pub mod pathcheck;
 pub mod paths;
+#[cfg(kani)]
+mod proofs;
 pub mod report;
 pub mod runner;
+#[cfg(test)]
+mod scratch;
 pub mod sensors;
 pub mod signals;
 pub mod snapshot;

@@ -4,6 +4,9 @@
 ![clippy](https://img.shields.io/badge/clippy-pedantic%20denied-a56bff)
 ![qmllint](https://img.shields.io/badge/qmllint-all%20categories%2C%200%20warnings-c8e967)
 ![harness](https://img.shields.io/badge/plugin%20harness-100%20checks-ffb454)
+![kani](https://img.shields.io/badge/kani-4%20proofs-52e8ff)
+![fuzz](https://img.shields.io/badge/fuzz-7%20targets-a56bff)
+![unsafe](https://img.shields.io/badge/unsafe-forbidden-c8e967)
 
 Omniscient has two halves that fail in different ways: a Rust audit engine
 that runs system commands, and a Quickshell plugin that runs **inside the
@@ -150,6 +153,101 @@ deliberately broken to confirm a test fails:
 
 Two early survivors (unbounded `cat` and a line cap whose notice still
 printed) led to the peak-memory limit and the delegate/stall assertions.
+
+## 🔬 Deep verification
+
+```bash
+./scripts/verify.sh quick   # audit, deny, semgrep, geiger, Kani   (~15 min)
+./scripts/verify.sh full    # + every fuzz target and cargo-mutants (hours)
+```
+
+`gate.sh` proves the code is clean and tested. `verify.sh` targets the part
+that runs as root, the privileged helper (`src/helper.rs`), and asks
+whether any input can make it do something it shouldn't. It is too slow for
+every commit, so it runs before releases and after any change to the helper,
+`fix.rs`, `elevation.rs`, `pathcheck.rs` or `capture.rs`.
+
+| Layer | Tool | What it establishes |
+| --- | --- | --- |
+| Supply chain | `cargo audit`, `cargo deny` | no advisories, allowed licenses, no duplicate or git-sourced crates |
+| SAST | `semgrep` with `sast/semgrep.yml` | project rules (below), each one a real review finding |
+| Unsafe census | `cargo geiger` | Omniscient has **0** unsafe and `#![forbid(unsafe_code)]`; unsafe exists only in audited dependencies (libc, memchr, hashbrown, time) |
+| Model checking | Kani (`src/proofs.rs`) | properties proved for *every* input within bounds, not sampled |
+| Fuzzing | `cargo fuzz` (`fuzz/`) | millions of hostile inputs per target, four checked differentially against independent references |
+| Mutation testing | `cargo mutants` | the tests fail when the root code is broken |
+
+<details>
+<summary><b>Restriction lints on root code</b></summary>
+
+`src/helper.rs` denies `unwrap_used`, `expect_used`, `panic`,
+`indexing_slicing` and `arithmetic_side_effects` at module level, so the
+normal clippy gate enforces them. Tests are exempt. A panic in the helper drops the
+elevated session, and an unchecked index or overflow there is a root-side
+crash on input shaped by the requester. The lints forced the mount-path
+decoder to walk slices with checked arithmetic, and that is the code path
+where the fuzzer had already found an overflow.
+
+</details>
+
+<details>
+<summary><b>Semgrep rules</b></summary>
+
+- `helper-spawns-only-allowlisted-programs`: the helper may only execute
+  a program `decide` returned from the allowlist, or the elevator constant.
+- `sudo-must-be-non-interactive`: `sudo` without `-n` is an error. The single
+  deliberate prompt (the user pressing the authenticate key, dashboard
+  suspended) carries a reviewed `nosemgrep` with its reason.
+- `predictable-temp-path`: `temp_dir().join(..)` is refused. Tests use
+  `crate::scratch::dir`, which creates an unguessable 0700 directory with
+  `create_dir` (it fails rather than reusing a pre-planted path or symlink).
+  The rule found nine such test paths.
+- `shell-interpolation`, `download-to-shell`, `unpinned-cargo-git-install`,
+  `qml-shell-command`: the Omarchy marketplace baseline, kept as rules.
+- `no-unwrap-in-root-code`, `fixed-tmp-path-in-script`.
+
+</details>
+
+<details>
+<summary><b>Kani proofs</b></summary>
+
+| Harness | Property |
+| --- | --- |
+| `decode_mount_path_never_panics` | the `/proc/self/mounts` decoder's byte core never panics and never returns more bytes than it was given, for every byte string up to 8 bytes (every escape, partial escape and out-of-range value) |
+| `accepted_disk_names_cannot_escape_dev` | for every ASCII string up to 14 bytes, an accepted disk is `/dev/` plus a known prefix (`sd`, `vd`, `hd`, `xvd`, `nvme`, `mmcblk`) and lowercase letters and digits only: no `/`, no `.`, no traversal |
+| `allowlist_admits_only_fixed_commands` | for every program name up to 8 bytes and single argument up to 6, acceptance means exactly `lshw -short` or `smartctl` on a valid disk; multi-argument requests are covered by the `helper-decide` fuzzer |
+| `busy_percent_is_a_percentage` | the HUD CPU meter is always in `[0, 100]`, for any pair of `/proc/stat` samples |
+
+</details>
+
+<details>
+<summary><b>Fuzz targets</b></summary>
+
+| Target | Checks |
+| --- | --- |
+| `helper-decide` | arbitrary request lines into `decide`: anything accepted is an allowlisted program with allowlisted flags on a real mount or disk, or one of the two allowlisted repairs |
+| `mount-decode-diff` | differential: `decode_mount_path` against an independent u32 reference decoder |
+| `disk-name-diff` | differential: `valid_disk_name` against a regex |
+| `journal-args` | HUD filter argv never panics; accepted priority, limit, unit, cursor and search obey the grammar (differential against regexes) |
+| `journal-entries` | journal JSON from any program: messages bounded and escape-free, collapse key differential against a regex implementation |
+| `capture-bound` | `sanitize` / `bound_text`: no control characters, idempotent, within bounds, code fences defused, nothing cut when nothing needs cutting |
+| `parsers` | signals, sensors and history parsers never panic on hostile text, and derived ratios and utilization stay in range |
+
+Two real bugs, both fixed with regression tests:
+
+- [x] **Root helper panic**: `\777` in a mount path overflowed u8 arithmetic
+  in `decode_mount_path`, crashing the root helper on crafted
+  `/proc/self/mounts` content. Now checked arithmetic: an out-of-range escape
+  stays literal text.
+- [x] **Off-by-one in `bound_text`**: output of exactly `max_lines` lines, or
+  exactly `max_bytes`, was reported as truncated because the cut landed
+  before the final newline.
+
+A third hit was a bug in the `parsers` harness itself (splitting in the
+middle of a UTF-8 character), fixed in the harness.
+
+</details>
+
+MUTANTS_PLACEHOLDER
 
 ## 🖥️ Host checks
 

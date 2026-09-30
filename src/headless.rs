@@ -37,15 +37,19 @@ pub fn run_packages() -> Result<()> {
     run_with_selection(Some(&["packages"]))
 }
 
+/// The audit always runs as the invoking user. In the graphical (pkexec)
+/// flow one authorization starts the root-owned privileged helper for the
+/// elevated checks; without it (no root-owned install, or authorization
+/// refused) the audit still runs and elevated sections say what they need.
 fn run_with_selection(selected_slugs: Option<&[&str]>) -> Result<()> {
-    if elevation::reexec_graphical()? {
-        return Ok(());
+    let mut notice = None;
+    if elevation::uses_graphical() {
+        if let Err(error) = crate::helper::start() {
+            notice = Some(format!("ELEVATED CHECKS SKIPPED / {error:#}"));
+        }
     }
-
-    let result = run_audit(selected_slugs);
-    if elevation::is_privileged() {
-        elevation::restore_user_files()?;
-    }
+    let result = run_audit(selected_slugs, notice.as_deref());
+    crate::helper::stop();
     result
 }
 
@@ -123,7 +127,7 @@ impl Progress<'_> {
     }
 }
 
-fn run_audit(selected_slugs: Option<&[&str]>) -> Result<()> {
+fn run_audit(selected_slugs: Option<&[&str]>, notice: Option<&str>) -> Result<()> {
     let modules = modules::all_modules();
     let selected = match selected_slugs {
         Some(slugs) => modules
@@ -222,11 +226,7 @@ fn run_audit(selected_slugs: Option<&[&str]>) -> Result<()> {
     }
     write_summary(&progress, &root, &timestamp)?;
     progress.summary_path = Some(root.join("SUMMARY.md").display().to_string());
-    progress.publish(if selected_slugs.is_some() {
-        "PACKAGE SCAN COMPLETE"
-    } else {
-        "AUDIT COMPLETE"
-    });
+    progress.publish(&completion_message(selected_slugs.is_some(), notice));
     Ok(())
 }
 
@@ -279,4 +279,13 @@ fn write_summary(progress: &Progress<'_>, root: &Path, timestamp: &str) -> Resul
         .map(|(name, path)| (name.as_str(), path.as_str()))
         .collect::<Vec<_>>();
     report::write_summary(root, timestamp, &progress.health, &summary_refs)
+}
+
+fn completion_message(package_scan: bool, notice: Option<&str>) -> String {
+    let done = if package_scan {
+        "PACKAGE SCAN COMPLETE"
+    } else {
+        "AUDIT COMPLETE"
+    };
+    notice.map_or_else(|| done.to_owned(), |notice| format!("{done} / {notice}"))
 }

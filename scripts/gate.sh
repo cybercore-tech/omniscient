@@ -21,7 +21,7 @@ quality_gates() {
     run_gate cargo test --locked --all-targets --all-features
     run_gate cargo test --locked --doc --all-features
     RUSTDOCFLAGS="-D warnings" run_gate cargo doc --locked --no-deps --all-features
-    run_gate bash -n install.sh scripts/gate.sh scripts/package.sh scripts/security-gate.sh scripts/plugin-gate.sh scripts/install-watch.sh
+    run_gate bash -n install.sh scripts/gate.sh scripts/package.sh scripts/security-gate.sh scripts/plugin-gate.sh scripts/install-watch.sh scripts/verify.sh
     run_gate bash scripts/security-gate.sh
     plugin_gate
 }

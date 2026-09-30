@@ -19,7 +19,7 @@ pub fn resolve(cmd: &str) -> Option<PathBuf> {
         return is_executable(&path).then_some(path);
     }
 
-    let path_var = if crate::elevation::is_privileged() {
+    let path_var = if crate::elevation::is_root() {
         "/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin".to_string()
     } else {
         std::env::var("PATH").ok()?

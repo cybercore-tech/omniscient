@@ -421,7 +421,10 @@ fn suspend_for_sudo(terminal: &mut Terminal<CrosstermBackend<Stdout>>) -> Result
         DisableMouseCapture
     )
     .context("leaving the dashboard for sudo")?;
-
+    // The one deliberate prompt: the user pressed the key to authenticate,
+    // on their own terminal, with the dashboard suspended. It only caches
+    // the credential; every command afterwards runs with `sudo -n`.
+    // nosemgrep: sast.sudo-must-be-non-interactive
     let result = Command::new("/usr/bin/sudo").arg("-v").status();
 
     execute!(
