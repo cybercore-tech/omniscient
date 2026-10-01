@@ -138,5 +138,6 @@ not proof of a specific upstream origin.
 
 ## Reporting
 
-Please report security issues privately through the repository's GitHub
-security contact rather than opening a public issue with exploit details.
+Please report security issues privately by email to
+[security@cybercoretech.net](mailto:security@cybercoretech.net) rather than opening a public issue
+with exploit details.
