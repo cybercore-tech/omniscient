@@ -1025,7 +1025,7 @@ mod tests {
             vec![("nvme0n1", "nvme", Some(44.9)), ("sda", "sata", Some(36.0))],
             "loop devices are skipped"
         );
-        assert!(reading.notes.is_empty());
+        assert_eq!(reading.notes, Vec::<String>::new());
         let platform = &reading.platform;
         assert_eq!(platform.profile.as_deref(), Some("balanced"));
         assert_eq!(
