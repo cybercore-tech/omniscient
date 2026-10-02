@@ -256,6 +256,11 @@ footer { border-top:1px solid var(--line); padding:30px 0 44px; color:var(--mute
 </section>
 </main>
 
+
+<!-- Cybercore Tech contact block: one shared source for every site (cybercore-tech.github.io/kit/contact.js + data/contact.json) -->
+<section class="cc-contact-band" aria-label="Contact Cybercore Tech" style="width:min(1120px,calc(100% - 2.5rem));margin:4.5rem auto 0;padding:2.25rem 0 1.75rem;border-top:1px solid var(--line,#32303e)">
+  <cybercore-contact repo="omniscient" bare><a href="mailto:dev@cybercoretech.net">dev@cybercoretech.net</a></cybercore-contact>
+</section>
 <footer><div class="wrap foot"><div>OMNISCIENT / CYBERCORE · MIT LICENSED · FULL-SYSTEM SIGNAL</div><div class="foot-links"><a href="https://github.com/cybercore-tech/omniscient">GitHub</a><a href="https://github.com/cybercore-tech/cybercore">Cybercore schema</a><a href="#top">Back to top ↑</a></div></div></footer>
 
 <script>
@@ -372,5 +377,6 @@ let saved = 'neon-night'; try { saved = localStorage.getItem('omniscient-theme')
   applyCanonical(allNames.includes(saved) ? saved : "cybercore-tech");
 })();
 </script>
+  <script type="module" src="https://cybercore-tech.github.io/kit/contact.js"></script>
 </body>
 </html>
