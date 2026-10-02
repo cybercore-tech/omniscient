@@ -506,6 +506,6 @@ mod tests {
         };
         let out = run(Path::new("/usr/bin/cat"), &[], limits).expect("cat runs");
         assert!(out.success());
-        assert!(out.stdout.bytes.is_empty());
+        assert_eq!(out.stdout.bytes, [] as [u8; 0]);
     }
 }

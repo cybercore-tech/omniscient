@@ -1430,7 +1430,7 @@ cups: 947 total files, 11 altered files";
             fs::read_to_string(directory.join("bluetooth.md")).expect("read bluetooth report");
         assert!(report.contains("# 📡 BLUETOOTH"));
         assert!(report.contains("## bluetoothctl devices"));
-        assert!(!report.trim().is_empty());
+        assert_ne!(report.trim(), "");
         fs::remove_dir_all(directory).expect("remove test report directory");
     }
 
